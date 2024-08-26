@@ -1,21 +1,14 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 import time
 import asyncpg
 from dotenv import load_dotenv
 import os
-from .epistula import verify_signature
+from epistula import verify_signature
 
 app = FastAPI()
 load_dotenv()
-
-
-class OrganicScoreUpdateData(BaseModel):
-    uid: int
-    verified: bool
-    wps: Optional[float] = None
-
 
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
@@ -47,9 +40,9 @@ async def is_authorized_hotkey(conn, signed_by: str) -> bool:
     return row is not None
 
 
-# MinerResponse endpoint
+# Ingest endpoint
 @app.post("/ingest")
-async def ingest(request: Request):
+async def ingest(payload: IngestPayload, request: Request):
     now = time.time_ns()
     body = await request.body()
     json = await request.json()
@@ -74,11 +67,10 @@ async def ingest(request: Request):
     conn: asyncpg.Connection = await asyncpg.connect(os.getenv("DATABASE_URL"))
 
     try:
-        # Check if the sender is an authorized hotkey
         if not await is_authorized_hotkey(conn, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
         async with conn.transaction():
-            validator_request_data = ValidatorRequest(**json["data"]["request"])
+            validator_request_data = payload.request
             await conn.execute(
                 """
                 INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
@@ -91,10 +83,6 @@ async def ingest(request: Request):
                 validator_request_data.version,
                 validator_request_data.hotkey,
             )
-            # Insert miner response data into the database
-            miner_response_data = [
-                MinerResponse(**data) for data in json["data"]["response"]
-            ]
             await conn.executemany(
                 """
                 INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, stats) 
@@ -102,13 +90,12 @@ async def ingest(request: Request):
                 """,
                 [
                     (md.r_nanoid, md.hotkey, md.coldkey, md.uid, json.dumps(md.stats))
-                    for md in miner_response_data
+                    for md in payload.responses
                 ],
             )
-        return "", 200
+        return {"status": "success"}
 
     except Exception as e:
-        print(f"Error inserting miner response: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal Server Error: Could not insert miner response data. {str(e)}",
