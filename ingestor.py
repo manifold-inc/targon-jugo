@@ -11,6 +11,7 @@ import json
 app = FastAPI()
 load_dotenv()
 
+
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
     r_nanoid: str
@@ -39,26 +40,29 @@ def is_authorized_hotkey(cursor, signed_by: str) -> bool:
     cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
     return cursor.fetchone() is not None
 
+
 # Ingestion endpoint
 @app.post("/ingest")
-async def ingest(payload: IngestPayload, request: Request):
+async def ingest(request: Request):
     now = time.time_ns()
     body = await request.body()
     json_data = await request.json()
-    
+
     # Extract signature information from headers
     timestamp = request.headers.get("Epistula-Timestamp")
     uuid = request.headers.get("Epistula-Uuid")
     signed_by = request.headers.get("Epistula-Signed-By")
     signature = request.headers.get("Epistula-Request-Signature")
 
-    if not all([signature, timestamp, uuid, signed_by]):
-        raise HTTPException(
-            status_code=400, detail="Signature, timestamp, uuid, signed_by is missing"
-        )
-
     # Verify the signature using the new epistula protocol
-    err = verify_signature(signature=signature, body=body, timestamp=timestamp, uuid=uuid, signed_by=signed_by, now=now)
+    err = verify_signature(
+        signature=signature,
+        body=body,
+        timestamp=timestamp,
+        uuid=uuid,
+        signed_by=signed_by,
+        now=now,
+    )
 
     if err:
         raise HTTPException(status_code=400, detail=str(err))
@@ -70,33 +74,30 @@ async def ingest(payload: IngestPayload, request: Request):
         db=os.getenv("DATABASE"),
         autocommit=True,
         ssl_mode="VERIFY_IDENTITY",
-        ssl={ "ca": "/etc/ssl/cert.pem" }
+        ssl={"ca": "/etc/ssl/certs/ca-certificates.crt"},
     )
-
 
     cursor = connection.cursor()
     try:
+        payload = IngestPayload(**json_data)
         # Check if the sender is an authorized hotkey
-        if not is_authorized_hotkey(cursor, signed_by):
+        if not signed_by or not is_authorized_hotkey(cursor, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
-
-        validator_request_data = ValidatorRequest(**json_data["request"])
         cursor.execute(
             """
             INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
-                validator_request_data.r_nanoid,
-                validator_request_data.block,
-                json.dumps(validator_request_data.sampling_params),
-                json.dumps(validator_request_data.ground_truth),
-                validator_request_data.version,
-                validator_request_data.hotkey,
-            )
+                payload.request.r_nanoid,
+                payload.request.block,
+                json.dumps(payload.request.sampling_params),
+                json.dumps(payload.request.ground_truth),
+                payload.request.version,
+                payload.request.hotkey,
+            ),
         )
 
-        miner_response_data = [MinerResponse(**data) for data in json_data["responses"]]
         cursor.executemany(
             """
             INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, stats) 
@@ -104,7 +105,7 @@ async def ingest(payload: IngestPayload, request: Request):
             """,
             [
                 (md.r_nanoid, md.hotkey, md.coldkey, md.uid, json.dumps(md.stats))
-                for md in miner_response_data
+                for md in payload.responses
             ],
         )
 
