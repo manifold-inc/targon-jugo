@@ -52,8 +52,6 @@ async def ingest(payload: IngestPayload, request: Request):
     signed_by = request.headers.get("Epistula-Signed-By")
     signature = request.headers.get("Epistula-Request-Signature")
 
-    now = time.time_ns()    
-
     if not all([signature, timestamp, address]):
         raise HTTPException(
             status_code=400, detail="Signature, timestamp, or address is missing"
