@@ -52,13 +52,13 @@ async def ingest(payload: IngestPayload, request: Request):
     signed_by = request.headers.get("Epistula-Signed-By")
     signature = request.headers.get("Epistula-Request-Signature")
 
-    if not all([signature, timestamp, address]):
+    if not all([signature, timestamp, uuid, signed_by]):
         raise HTTPException(
-            status_code=400, detail="Signature, timestamp, or address is missing"
+            status_code=400, detail="Signature, timestamp, uuid, signed_by is missing"
         )
 
     # Verify the signature using the new epistula protocol
-    err = verify_signature(signature, body, timestamp, uuid, signed_by, now)
+    err = verify_signature(signature=signature, body=body, timestamp=timestamp, uuid=uuid, signed_by=signed_by, now=now)
 
     if err:
         raise HTTPException(status_code=400, detail=str(err))
@@ -73,9 +73,9 @@ async def ingest(payload: IngestPayload, request: Request):
         ssl={ "ca": "/etc/ssl/cert.pem" }
     )
 
-    try:
-        cursor = connection.cursor()
 
+    cursor = connection.cursor()
+    try:
         # Check if the sender is an authorized hotkey
         if not is_authorized_hotkey(cursor, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
