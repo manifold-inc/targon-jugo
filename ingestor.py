@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import time
-import asyncpg
 from dotenv import load_dotenv
 import os
 from epistula import verify_signature
+import MySQLdb
+import json
 
 app = FastAPI()
 load_dotenv()
@@ -34,11 +35,9 @@ class IngestPayload(BaseModel):
     request: ValidatorRequest
 
 
-# Function to verify if the hotkey is authorized
-async def is_authorized_hotkey(conn, signed_by: str) -> bool:
-    row = await conn.fetchrow("SELECT 1 FROM validator WHERE hotkey = $1", signed_by)
-    return row is not None
-
+def is_authorized_hotkey(cursor, signed_by: str) -> bool:
+    cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
+    return cursor.fetchone() is not None
 
 # Ingestion endpoint
 @app.post("/ingest")
@@ -66,19 +65,30 @@ async def ingest(payload: IngestPayload, request: Request):
     if err:
         raise HTTPException(status_code=400, detail=str(err))
 
-    conn: asyncpg.Connection = await asyncpg.connect(os.getenv("DATABASE_URL"))
+    connection = MySQLdb.connect(
+        host=os.getenv("DATABASE_HOST"),
+        user=os.getenv("DATABASE_USERNAME"),
+        passwd=os.getenv("DATABASE_PASSWORD"),
+        db=os.getenv("DATABASE"),
+        autocommit=True,
+        ssl_mode="VERIFY_IDENTITY",
+        ssl={ "ca": "/etc/ssl/cert.pem" }
+    )
 
     try:
+        cursor = connection.cursor()
+
         # Check if the sender is an authorized hotkey
-        if not await is_authorized_hotkey(conn, signed_by):
+        if not is_authorized_hotkey(cursor, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
-        async with conn.transaction():
-            validator_request_data = ValidatorRequest(**json_data["data"]["request"])
-            await conn.execute(
-                """
-                INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
+
+        validator_request_data = ValidatorRequest(**json_data["request"])
+        cursor.execute(
+            """
+            INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
                 validator_request_data.r_nanoid,
                 validator_request_data.block,
                 json.dumps(validator_request_data.sampling_params),
@@ -86,27 +96,29 @@ async def ingest(payload: IngestPayload, request: Request):
                 validator_request_data.version,
                 validator_request_data.hotkey,
             )
-            # Insert miner response data into the database
-            miner_response_data = [
-                MinerResponse(**data) for data in json_data["data"]["response"]
-            ]
-            await conn.executemany(
-                """
-                INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, stats) 
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                [
-                    (md.r_nanoid, md.hotkey, md.coldkey, md.uid, json.dumps(md.stats))
-                    for md in miner_response_data
-                ],
-            )
+        )
+
+        miner_response_data = [MinerResponse(**data) for data in json_data["responses"]]
+        cursor.executemany(
+            """
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, stats) 
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            [
+                (md.r_nanoid, md.hotkey, md.coldkey, md.uid, json.dumps(md.stats))
+                for md in miner_response_data
+            ],
+        )
+
+        connection.commit()
         return "", 200
 
     except Exception as e:
-        print(f"Error inserting miner response: {e}")
+        connection.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Internal Server Error: Could not insert miner response data. {str(e)}",
+            detail=f"Internal Server Error: Could not insert responses/requests. {str(e)}",
         )
     finally:
-        await conn.close()
+        cursor.close()
+        connection.close()
