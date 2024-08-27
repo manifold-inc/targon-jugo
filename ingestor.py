@@ -1,13 +1,15 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List
 import time
 from dotenv import load_dotenv
 import os
 from epistula import verify_signature
-import MySQLdb
 import json
+import pymysql
 
+
+pymysql.install_as_MySQLdb()
 app = FastAPI()
 load_dotenv()
 
@@ -18,15 +20,15 @@ class MinerResponse(BaseModel):
     hotkey: str
     coldkey: str
     uid: int
-    stats: Dict[str, Any]
+    stats: str
 
 
 # Define the ValidatorRequest model
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    sampling_params: Dict[str, Any]
-    ground_truth: Dict[str, Any]
+    sampling_params: str
+    ground_truth: str
     version: int
     hotkey: str
 
@@ -44,7 +46,7 @@ def is_authorized_hotkey(cursor, signed_by: str) -> bool:
 # Ingestion endpoint
 @app.post("/ingest")
 async def ingest(request: Request):
-    now = time.time_ns()
+    now = round(time.time() * 1000)
     body = await request.body()
     json_data = await request.json()
 
@@ -67,14 +69,13 @@ async def ingest(request: Request):
     if err:
         raise HTTPException(status_code=400, detail=str(err))
 
-    connection = MySQLdb.connect(
+    connection = pymysql.connect(
         host=os.getenv("DATABASE_HOST"),
         user=os.getenv("DATABASE_USERNAME"),
         passwd=os.getenv("DATABASE_PASSWORD"),
         db=os.getenv("DATABASE"),
         autocommit=True,
-        ssl_mode="VERIFY_IDENTITY",
-        ssl={"ca": "/etc/ssl/certs/ca-certificates.crt"},
+        ssl={"ssl_ca": "/etc/ssl/certs/ca-certificates.crt"},
     )
 
     cursor = connection.cursor()
