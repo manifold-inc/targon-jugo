@@ -40,29 +40,31 @@ async def is_authorized_hotkey(conn, signed_by: str) -> bool:
     return row is not None
 
 
-# MinerResponse endpoint
+# Ingestion endpoint
 @app.post("/ingest")
 async def ingest(payload: IngestPayload, request: Request):
     now = time.time_ns()
     body = await request.body()
-    json = await request.json()
-    signed_by = json.get("signed_by")
-    nonce = json.get("nonce")
+    json_data = await request.json()
+    
+    # Extract signature information from headers
+    timestamp = request.headers.get("Epistula-Timestamp")
+    uuid = request.headers.get("Epistula-Uuid")
+    signed_by = request.headers.get("Epistula-Signed-By")
+    signature = request.headers.get("Epistula-Request-Signature")
 
-    if nonce is None or signed_by is None:
+    now = time.time_ns()    
+
+    if not all([signature, timestamp, address]):
         raise HTTPException(
-            status_code=400, detail="Nonce or Signed By is missing or invalid"
+            status_code=400, detail="Signature, timestamp, or address is missing"
         )
-    err = verify_signature(
-        request.headers.get("Body-Signature"),
-        body,
-        nonce,
-        signed_by,
-        now,
-    )
+
+    # Verify the signature using the new epistula protocol
+    err = verify_signature(signature, body, timestamp, uuid, signed_by, now)
 
     if err:
-        raise HTTPException(status_code=400, detail=err)
+        raise HTTPException(status_code=400, detail=str(err))
 
     conn: asyncpg.Connection = await asyncpg.connect(os.getenv("DATABASE_URL"))
 
@@ -71,7 +73,7 @@ async def ingest(payload: IngestPayload, request: Request):
         if not await is_authorized_hotkey(conn, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
         async with conn.transaction():
-            validator_request_data = ValidatorRequest(**json["data"]["request"])
+            validator_request_data = ValidatorRequest(**json_data["data"]["request"])
             await conn.execute(
                 """
                 INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
@@ -86,7 +88,7 @@ async def ingest(payload: IngestPayload, request: Request):
             )
             # Insert miner response data into the database
             miner_response_data = [
-                MinerResponse(**data) for data in json["data"]["response"]
+                MinerResponse(**data) for data in json_data["data"]["response"]
             ]
             await conn.executemany(
                 """
