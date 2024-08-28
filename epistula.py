@@ -17,7 +17,7 @@ def verify_signature(
         return "Invalid uuid"
     if not isinstance(body, bytes):
         return "Body is not of type bytes"
-    ALLOWED_DELTA_MS = 5000
+    ALLOWED_DELTA_MS = 8000
     keypair = Keypair(ss58_address=signed_by)
     if timestamp + ALLOWED_DELTA_MS < now:
         return f"Request is too stale: {timestamp + ALLOWED_DELTA_MS} < {now}"
