@@ -67,6 +67,7 @@ async def ingest(request: Request):
     )
 
     if err:
+        print(err)
         raise HTTPException(status_code=400, detail=str(err))
 
     connection = pymysql.connect(
