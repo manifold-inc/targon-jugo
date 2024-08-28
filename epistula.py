@@ -21,7 +21,7 @@ def verify_signature(
     keypair = Keypair(ss58_address=signed_by)
     if timestamp + ALLOWED_DELTA_MS < now:
         return "Request is too stale"
-    message = f"{sha256(body).hexdigest()}.{uuid}.{timestamp}.{signed_for}"
+    message = f"{sha256(body).hexdigest()}.{uuid}.{timestamp}.{signed_for or ''}"
     print(message)
     verified = keypair.verify(message, signature)
     if not verified:
