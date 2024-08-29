@@ -93,8 +93,8 @@ async def ingest(request: Request):
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                json.dumps(payload.request.sampling_params),
-                json.dumps(payload.request.ground_truth),
+                payload.request.sampling_params,
+                payload.request.ground_truth,
                 payload.request.version,
                 payload.request.hotkey,
             ),
@@ -106,7 +106,7 @@ async def ingest(request: Request):
             VALUES (%s, %s, %s, %s, %s)
             """,
             [
-                (md.r_nanoid, md.hotkey, md.coldkey, md.uid, json.dumps(md.stats))
+                (md.r_nanoid, md.hotkey, md.coldkey, md.uid, md.stats)
                 for md in payload.responses
             ],
         )
