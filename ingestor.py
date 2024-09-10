@@ -28,7 +28,7 @@ class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
     sampling_params: str
-    request: str
+    vali_request: str
     request_endpoint: str
     version: int
     hotkey: str
@@ -88,14 +88,14 @@ async def ingest(request: Request):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
         cursor.execute(
             """
-            INSERT INTO validator_request (r_nanoid, block, sampling_params, request, request_endpoint, version, hotkey) 
+            INSERT INTO validator_request (r_nanoid, block, sampling_params, vali_request, request_endpoint, version, hotkey) 
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
                 payload.request.block,
                 payload.request.sampling_params,
-                payload.request.request,
+                payload.request.vali_request,
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
