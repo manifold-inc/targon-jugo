@@ -28,7 +28,8 @@ class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
     sampling_params: str
-    ground_truth: str
+    request: str
+    request_endpoint: str
     version: int
     hotkey: str
 
@@ -87,14 +88,15 @@ async def ingest(request: Request):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
         cursor.execute(
             """
-            INSERT INTO validator_request (r_nanoid, block, sampling_params, ground_truth, version, hotkey) 
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO validator_request (r_nanoid, block, sampling_params, request, request_endpoint, version, hotkey) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
                 payload.request.block,
                 payload.request.sampling_params,
-                payload.request.ground_truth,
+                payload.request.request,
+                payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
             ),
@@ -102,12 +104,24 @@ async def ingest(request: Request):
 
         cursor.executemany(
             """
-            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, stats) 
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, response, tps) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             [
-                (md.r_nanoid, md.hotkey, md.coldkey, md.uid, md.stats)
+                (
+                    md.r_nanoid,
+                    md.hotkey,
+                    md.coldkey,
+                    md.uid,
+                    stats_dict['verified'],
+                    stats_dict['time_to_first_token'],
+                    stats_dict['time_for_all_tokens'],
+                    stats_dict['total_time'],
+                    stats_dict['response'],
+                    stats_dict['tps']
+                )
                 for md in payload.responses
+                for stats_dict in [json.loads(md.stats)]
             ],
         )
 
