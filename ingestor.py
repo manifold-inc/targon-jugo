@@ -5,8 +5,8 @@ import time
 from dotenv import load_dotenv
 import os
 from epistula import verify_signature
-import json
 import pymysql
+import traceback
 
 
 pymysql.install_as_MySQLdb()
@@ -130,6 +130,8 @@ async def ingest(request: Request):
 
     except Exception as e:
         connection.rollback()
+        error_traceback = traceback.format_exc()
+        print(f"Error occurred: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal Server Error: Could not insert responses/requests. {str(e)}",
