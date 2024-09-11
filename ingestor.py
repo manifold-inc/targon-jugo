@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 from epistula import verify_signature
 import pymysql
+import json
 import traceback
 
 
@@ -27,7 +28,7 @@ class MinerResponse(BaseModel):
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    sampling_params: str 
+    sampling_params: Dict[str, Any] 
     vali_request: str
     request_endpoint: str
     version: int
@@ -117,7 +118,7 @@ async def ingest(request: Request):
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                payload.request.sampling_params,
+                json.dumps(payload.request.sampling_params),
                 payload.request.vali_request,
                 payload.request.request_endpoint,
                 payload.request.version,
