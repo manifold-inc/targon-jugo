@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any
 import time
 from dotenv import load_dotenv
 import os
@@ -20,14 +20,14 @@ class MinerResponse(BaseModel):
     hotkey: str
     coldkey: str
     uid: int
-    stats: str
+    stats: Dict[str, Any]  
 
 
 # Define the ValidatorRequest model
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    sampling_params: str
+    sampling_params: str 
     vali_request: str
     request_endpoint: str
     version: int
@@ -86,6 +86,29 @@ async def ingest(request: Request):
         # Check if the sender is an authorized hotkey
         if not signed_by or not is_authorized_hotkey(cursor, signed_by):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
+        cursor.executemany(
+            """
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, response, tps) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                (
+                    md.r_nanoid,
+                    md.hotkey,
+                    md.coldkey,
+                    md.uid,
+                    md.stats['verified'],
+                    md.stats['time_to_first_token'],
+                    md.stats['time_for_all_tokens'],
+                    md.stats['total_time'],
+                    md.stats['response'],
+                    md.stats['tps']
+                )
+                for md in payload.responses
+            ],
+        )
+
+        # Insert validator request
         cursor.execute(
             """
             INSERT INTO validator_request (r_nanoid, block, sampling_params, vali_request, request_endpoint, version, hotkey) 
@@ -100,29 +123,6 @@ async def ingest(request: Request):
                 payload.request.version,
                 payload.request.hotkey,
             ),
-        )
-
-        cursor.executemany(
-            """
-            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, response, tps) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            [
-                (
-                    md.r_nanoid,
-                    md.hotkey,
-                    md.coldkey,
-                    md.uid,
-                    stats_dict['verified'],
-                    stats_dict['time_to_first_token'],
-                    stats_dict['time_for_all_tokens'],
-                    stats_dict['total_time'],
-                    stats_dict['response'],
-                    stats_dict['tps']
-                )
-                for md in payload.responses
-                for stats_dict in [json.loads(md.stats)]
-            ],
         )
 
         connection.commit()
