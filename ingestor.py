@@ -16,12 +16,13 @@ load_dotenv()
 
 
 class Stats(BaseModel):
-    verified: bool
     time_to_first_token: float
     time_for_all_tokens: float
     total_time: float
-    response: Optional[str] = "No response"
     tps: float
+    tokens: List[Any]
+    verified: bool
+    error: Optional[str] = None
 
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
@@ -96,8 +97,8 @@ async def ingest(request: Request):
             raise HTTPException(status_code=401, detail="Unauthorized hotkey")
         cursor.executemany(
             """
-            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, response, tps) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             [
                 (
@@ -109,8 +110,9 @@ async def ingest(request: Request):
                     md.stats.time_to_first_token,
                     md.stats.time_for_all_tokens,
                     md.stats.total_time,
-                    md.stats.response,
+                    json.dumps(md.stats.tokens),
                     md.stats.tps,
+                    md.stats.error,
                 )
                 for md in payload.responses
             ],
