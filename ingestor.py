@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 from epistula import verify_signature
 import pymysql
+import json
 import traceback
 
 
@@ -124,7 +125,7 @@ async def ingest(request: Request):
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                payload.request.request,
+                json.dumps(payload.request.request),
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
