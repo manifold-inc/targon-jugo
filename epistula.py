@@ -2,9 +2,8 @@ from hashlib import sha256
 from typing import Annotated, Optional
 from substrateinterface import Keypair
 
-
 def verify_signature(
-        signature, body: bytes, timestamp, uuid, signed_by, now, signed_for: Optional[str] = None,
+    signature, body: bytes, timestamp, uuid, signed_for: Optional[str] = None, signed_by: Optional[str] = None, now: Optional[int] = None
 ) -> Optional[Annotated[str, "Error Message"]]:
     if not isinstance(signature, str):
         return "Invalid Signature"
@@ -13,6 +12,8 @@ def verify_signature(
         return "Invalid Timestamp"
     if not isinstance(signed_by, str):
         return "Invalid Sender key"
+    if not isinstance(signed_for, str):
+        return "Invalid receiver key"
     if not isinstance(uuid, str):
         return "Invalid uuid"
     if not isinstance(body, bytes):
@@ -20,16 +21,10 @@ def verify_signature(
     ALLOWED_DELTA_MS = 8000
     keypair = Keypair(ss58_address=signed_by)
     if timestamp + ALLOWED_DELTA_MS < now:
-        return f"Request is too stale: {timestamp + ALLOWED_DELTA_MS} < {now}"
-    message = f"{sha256(body).hexdigest()}.{uuid}.{timestamp}.{signed_for or ''}"
-    print("message: ",message)
-    print(f"Body hash: {sha256(body).hexdigest()}")
-    print(f"UUID: {uuid}")
-    print(f"Timestamp: {timestamp}")
-    print(f"Signed for: {signed_for}")
-    print(f"Signature: {signature}")
+        return "Request is too stale"
+    message = f"{sha256(body).hexdigest()}.{uuid}.{timestamp}.{signed_for}"
+    print(message)
     verified = keypair.verify(message, signature)
-    print(f"Verification result: {verified}")
     if not verified:
         return "Signature Mismatch"
     return None
