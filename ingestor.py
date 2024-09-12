@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 import time
 from dotenv import load_dotenv
 import os
@@ -35,7 +35,7 @@ class MinerResponse(BaseModel):
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    request: str = "No request"
+    request: Dict[str, Any]
     request_endpoint: str
     version: int
     hotkey: str
