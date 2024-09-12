@@ -20,7 +20,7 @@ class Stats(BaseModel):
     time_to_first_token: float
     time_for_all_tokens: float
     total_time: float
-    response: Optional[str] = "No repsonse"
+    response: Optional[str] = "No response"
     tps: float
 
 # Define the MinerResponse model
