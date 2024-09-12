@@ -120,7 +120,7 @@ async def ingest(request: Request):
         cursor.execute(
             """
             INSERT INTO validator_request (r_nanoid, block, vali_request, request_endpoint, version, hotkey) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
