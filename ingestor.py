@@ -1,12 +1,11 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Optional
 import time
 from dotenv import load_dotenv
 import os
 from epistula import verify_signature
 import pymysql
-import json
 import traceback
 
 
@@ -20,7 +19,7 @@ class Stats(BaseModel):
     time_to_first_token: float
     time_for_all_tokens: float
     total_time: float
-    response: str
+    response: Optional[str] = "No repsonse"
     tps: float
 
 # Define the MinerResponse model
@@ -36,7 +35,7 @@ class MinerResponse(BaseModel):
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    request: str
+    request: str = "No request"
     request_endpoint: str
     version: int
     hotkey: str
