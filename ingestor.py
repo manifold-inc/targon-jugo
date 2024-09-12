@@ -15,21 +15,28 @@ app = FastAPI()
 load_dotenv()
 
 
+class Stats(BaseModel):
+    verified: bool
+    time_to_first_token: float
+    time_for_all_tokens: float
+    total_time: float
+    response: str
+    tps: float
+
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
     r_nanoid: str
     hotkey: str
     coldkey: str
     uid: int
-    stats: Dict[str, Any]  
+    stats: Stats  
 
 
 # Define the ValidatorRequest model
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    sampling_params: Dict[str, Any] 
-    vali_request: str
+    request: str
     request_endpoint: str
     version: int
     hotkey: str
@@ -98,12 +105,12 @@ async def ingest(request: Request):
                     md.hotkey,
                     md.coldkey,
                     md.uid,
-                    md.stats['verified'],
-                    md.stats['time_to_first_token'],
-                    md.stats['time_for_all_tokens'],
-                    md.stats['total_time'],
-                    md.stats['response'],
-                    md.stats['tps']
+                    md.stats.verified,
+                    md.stats.time_to_first_token,
+                    md.stats.time_for_all_tokens,
+                    md.stats.total_time,
+                    md.stats.response,
+                    md.stats.tps,
                 )
                 for md in payload.responses
             ],
@@ -112,14 +119,13 @@ async def ingest(request: Request):
         # Insert validator request
         cursor.execute(
             """
-            INSERT INTO validator_request (r_nanoid, block, sampling_params, vali_request, request_endpoint, version, hotkey) 
+            INSERT INTO validator_request (r_nanoid, block, vali_request, request_endpoint, version, hotkey) 
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                json.dumps(payload.request.sampling_params),
-                payload.request.vali_request,
+                payload.request.request,
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
