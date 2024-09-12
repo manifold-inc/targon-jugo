@@ -22,8 +22,14 @@ def verify_signature(
     if timestamp + ALLOWED_DELTA_MS < now:
         return f"Request is too stale: {timestamp + ALLOWED_DELTA_MS} < {now}"
     message = f"{sha256(body).hexdigest()}.{uuid}.{timestamp}.{signed_for or ''}"
-    print(message)
+    print("message: ",message)
+    print(f"Body hash: {sha256(body).hexdigest()}")
+    print(f"UUID: {uuid}")
+    print(f"Timestamp: {timestamp}")
+    print(f"Signed for: {signed_for}")
+    print(f"Signature: {signature}")
     verified = keypair.verify(message, signature)
+    print(f"Verification result: {verified}")
     if not verified:
         return "Signature Mismatch"
     return None
