@@ -20,7 +20,7 @@ class Stats(BaseModel):
     time_for_all_tokens: float
     total_time: float
     tps: float
-    tokens: List[Any]
+    tokens: List[Dict[str, Any]]
     verified: bool
     error: Optional[str] = None
 
