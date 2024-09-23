@@ -94,7 +94,7 @@ async def ingest(request: Request):
         payload = IngestPayload(**json_data)
         # Check if the sender is an authorized hotkey
         if not signed_by or not is_authorized_hotkey(cursor, signed_by):
-            raise HTTPException(status_code=401, detail="Unauthorized hotkey")
+            raise HTTPException(status_code=401, detail=f"Unauthorized hotkey: {signed_by}")
         cursor.executemany(
             """
             INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error) 
