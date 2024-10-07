@@ -46,6 +46,7 @@ class ValidatorRequest(BaseModel):
 class IngestPayload(BaseModel):
     responses: List[MinerResponse]
     request: ValidatorRequest
+    models: List[str]
 
 
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
@@ -132,6 +133,21 @@ async def ingest(request: Request):
                 payload.request.version,
                 payload.request.hotkey,
             ),
+        )
+
+        # Update models in validator table if changed
+        cursor.execute(
+            """
+            INSERT INTO validator (hotkey, models)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE
+                models = IF(
+                    JSON_CONTAINS(models, %s) AND JSON_CONTAINS(%s, models),
+                    models,
+                    CAST(%s AS JSON)
+                )
+            """,
+            (payload.request.hotkey, json.dumps(payload.models), json.dumps(payload.models), json.dumps(payload.models), json.dumps(payload.models))
         )
 
         connection.commit()
