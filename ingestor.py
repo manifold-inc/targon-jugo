@@ -23,6 +23,8 @@ class Stats(BaseModel):
     tokens: List[Dict[str, Any]]
     verified: bool
     error: Optional[str] = None
+    cause: Optional[str] = None
+    organic: Optional[bool] = None
 
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
@@ -37,10 +39,14 @@ class MinerResponse(BaseModel):
 class ValidatorRequest(BaseModel):
     r_nanoid: str
     block: int
-    request: Dict[str, Any]
+    messages: Dict[str, Any]
     request_endpoint: str
     version: int
     hotkey: str
+    model: str
+    seed: Optional[int]
+    max_tokens: Optional[int]
+    temperature: Optional[float]
 
 
 class IngestPayload(BaseModel):
@@ -98,8 +104,8 @@ async def ingest(request: Request):
             raise HTTPException(status_code=401, detail=f"Unauthorized hotkey: {signed_by}")
         cursor.executemany(
             """
-            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error, cause, organic) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             [
                 (
@@ -114,6 +120,8 @@ async def ingest(request: Request):
                     json.dumps(md.stats.tokens),
                     md.stats.tps,
                     md.stats.error,
+                    md.stats.cause,
+                    md.stats.organic
                 )
                 for md in payload.responses
             ],
@@ -122,16 +130,20 @@ async def ingest(request: Request):
         # Insert validator request
         cursor.execute(
             """
-            INSERT INTO validator_request (r_nanoid, block, vali_request, request_endpoint, version, hotkey) 
+            INSERT INTO validator_request (r_nanoid, block, messages, request_endpoint, version, hotkey, model. seed, max_tokens, temperature) 
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                json.dumps(payload.request.request),
+                json.dumps(payload.request.messages),
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
+                payload.request.model,
+                payload.request.seed,
+                payload.request.max_tokens,
+                payload.request.temperature
             ),
         )
 
