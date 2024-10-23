@@ -140,6 +140,8 @@ async def ingest(request: Request):
             raise HTTPException(
                 status_code=401, detail=f"Unauthorized hotkey: {signed_by}"
             )
+        for md in payload.responses:
+            print(md.stats.cause)
         cursor.executemany(
             """
             INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error, cause, organic) 
