@@ -45,8 +45,8 @@ class MinerResponse(BaseModel):
     stats: Stats
 
 class LLMRequest(BaseModel):
-    messages: Optional[ Dict[str, Any] ]
-    prompt: Optional[str]
+    messages: Optional[ Dict[str, Any] ] = None
+    prompt: Optional[str] = None
     model: str
     seed: Optional[int]
     max_tokens: Optional[int]
