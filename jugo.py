@@ -170,8 +170,8 @@ async def ingest(request: Request):
         # Insert validator request
         cursor.execute(
             """
-            INSERT INTO validator_request (r_nanoid, block, messages, request_endpoint, version, hotkey, model. seed, max_tokens, temperature) 
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO validator_request (r_nanoid, block, messages, request_endpoint, version, hotkey, model, seed, max_tokens, temperature) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 payload.request.r_nanoid,
@@ -179,7 +179,7 @@ async def ingest(request: Request):
                 json.dumps(
                     payload.request.request.messages or payload.request.request.prompt
                 ),
-                payload.request.request_endpoint,
+                payload.request.request_endpoint.split(".")[1],
                 payload.request.version,
                 payload.request.hotkey,
                 payload.request.request.model,
