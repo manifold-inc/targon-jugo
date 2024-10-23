@@ -21,7 +21,7 @@ DEBUG = not not os.getenv("DEBUG")
 config = {}
 if not DEBUG:
     config = {"docs_url": None, "redoc_url": None}
-app = FastAPI(**config) #type: ignore
+app = FastAPI(**config)  # type: ignore
 
 
 class Stats(BaseModel):
@@ -35,13 +35,14 @@ class Stats(BaseModel):
     cause: Optional[str] = None
     organic: Optional[bool] = None
 
+
 # Define the MinerResponse model
 class MinerResponse(BaseModel):
     r_nanoid: str
     hotkey: str
     coldkey: str
     uid: int
-    stats: Stats  
+    stats: Stats
 
 
 # Define the ValidatorRequest model
@@ -67,6 +68,7 @@ class IngestPayload(BaseModel):
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
     cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
     return cursor.fetchone() is not None
+
 
 class CurrentBucket(BaseModel):
     id: Optional[str] = None
@@ -97,6 +99,7 @@ targon_stats_db = pymysql.connect(
     ssl={"ssl_ca": "/etc/ssl/certs/ca-certificates.crt"},
 )
 
+
 # Ingestion endpoint
 @app.post("/")
 async def ingest(request: Request):
@@ -124,13 +127,14 @@ async def ingest(request: Request):
         print(err)
         raise HTTPException(status_code=400, detail=str(err))
 
-
     cursor = targon_stats_db.cursor()
     try:
         payload = IngestPayload(**json_data)
         # Check if the sender is an authorized hotkey
         if not signed_by or not is_authorized_hotkey(cursor, signed_by):
-            raise HTTPException(status_code=401, detail=f"Unauthorized hotkey: {signed_by}")
+            raise HTTPException(
+                status_code=401, detail=f"Unauthorized hotkey: {signed_by}"
+            )
         cursor.executemany(
             """
             INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error, cause, organic) 
@@ -150,7 +154,7 @@ async def ingest(request: Request):
                     md.stats.tps,
                     md.stats.error,
                     md.stats.cause,
-                    md.stats.organic
+                    md.stats.organic,
                 )
                 for md in payload.responses
             ],
@@ -172,7 +176,7 @@ async def ingest(request: Request):
                 payload.request.model,
                 payload.request.seed,
                 payload.request.max_tokens,
-                payload.request.temperature
+                payload.request.temperature,
             ),
         )
 
@@ -188,7 +192,13 @@ async def ingest(request: Request):
                     CAST(%s AS JSON)
                 )
             """,
-            (payload.request.hotkey, json.dumps(payload.models), json.dumps(payload.models), json.dumps(payload.models), json.dumps(payload.models))
+            (
+                payload.request.hotkey,
+                json.dumps(payload.models),
+                json.dumps(payload.models),
+                json.dumps(payload.models),
+                json.dumps(payload.models),
+            ),
         )
 
         targon_stats_db.commit()
@@ -205,6 +215,7 @@ async def ingest(request: Request):
     finally:
         cursor.close()
         targon_stats_db.close()
+
 
 # Exegestor endpoint
 @app.get("/")
@@ -300,3 +311,8 @@ async def exgest(request: Request):
         "bucket_id": cached_bucket["bucket_id"],
         "records": cached_bucket["records"],
     }
+
+
+@app.get("/ping")
+def ping():
+    return "pong", 200
