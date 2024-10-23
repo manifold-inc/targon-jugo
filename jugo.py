@@ -157,7 +157,7 @@ async def ingest(request: Request):
                     md.stats.tps,
                     md.stats.error,
                     md.stats.cause,
-                    md.stats.organic,
+                    md.stats.organic or 0,
                 )
                 for md in payload.responses
             ],
