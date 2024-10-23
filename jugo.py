@@ -218,7 +218,6 @@ async def ingest(request: Request):
         )
     finally:
         cursor.close()
-        targon_stats_db.close()
 
 
 # Exegestor endpoint
@@ -305,7 +304,6 @@ async def exgest(request: Request):
             )
         finally:
             cursor.close()
-            targon_hub_db.close()
 
     # Return cached data (which may be an empty list of records)
     cached_bucket = cache["current_bucket"]
