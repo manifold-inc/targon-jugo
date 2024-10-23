@@ -1,6 +1,8 @@
-# Run the FastAPI application using uvicorn
-run:
-    uvicorn ingestor:app --host 0.0.0.0 --port 8000 --reload
+build:
+  docker build -t manifoldlabs/sn4-exegestor .
+
+run: build
+  docker run -p 8000:8000 --env-file .env -d --name dev_image manifoldlabs/sn4-exegestor
 
 # Alias for the run command
 up: run

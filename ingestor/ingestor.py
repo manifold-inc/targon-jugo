@@ -88,10 +88,10 @@ async def ingest(request: Request):
         raise HTTPException(status_code=400, detail=str(err))
 
     connection = pymysql.connect(
-        host=os.getenv("DATABASE_HOST"),
-        user=os.getenv("DATABASE_USERNAME"),
-        passwd=os.getenv("DATABASE_PASSWORD"),
-        db=os.getenv("DATABASE"),
+        host=os.getenv("STATS_DATABASE_HOST"),
+        user=os.getenv("STATS_DATABASE_USERNAME"),
+        passwd=os.getenv("STATS_DATABASE_PASSWORD"),
+        db=os.getenv("STATS_DATABASE"),
         autocommit=True,
         ssl={"ssl_ca": "/etc/ssl/certs/ca-certificates.crt"},
     )
