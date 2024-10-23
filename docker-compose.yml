@@ -1,0 +1,25 @@
+services:
+  jugo:
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jugo.rule=Host(`jugo.sybil.com`)
+      - traefik.http.routers.jugo.tls=true
+      - traefik.http.routers.jugo.tls.certresolver=letsencrypt
+      - traefik.http.services.jugo.loadbalancer.server.port=80
+    build:
+      context: .
+    env_file: .env
+
+  traefik:
+    image: traefik:v2.3
+    ports:
+      - 80:80
+      - 443:443
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.toml:/etc/traefik/traefik.toml
+      - traefik-public-certificates:/certificates
+
+volumes:
+  traefik-public-certificates:
