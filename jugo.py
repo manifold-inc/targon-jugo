@@ -44,19 +44,22 @@ class MinerResponse(BaseModel):
     uid: int
     stats: Stats
 
-
-# Define the ValidatorRequest model
-class ValidatorRequest(BaseModel):
-    r_nanoid: str
-    block: int
-    messages: Dict[str, Any]
-    request_endpoint: str
-    version: int
-    hotkey: str
+class LLMRequest(BaseModel):
+    messages: Optional[ Dict[str, Any] ]
+    prompt: Optional[str]
     model: str
     seed: Optional[int]
     max_tokens: Optional[int]
     temperature: Optional[float]
+
+# Define the ValidatorRequest model
+class ValidatorRequest(BaseModel):
+    request_endpoint: str
+    r_nanoid: str
+    block: int
+    request: LLMRequest
+    version: int
+    hotkey: str
 
 
 class IngestPayload(BaseModel):
@@ -169,18 +172,19 @@ async def ingest(request: Request):
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                json.dumps(payload.request.messages),
+                json.dumps(payload.request.request.messages or payload.request.request.prompt),
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
-                payload.request.model,
-                payload.request.seed,
-                payload.request.max_tokens,
-                payload.request.temperature,
+                payload.request.request.model,
+                payload.request.request.seed,
+                payload.request.request.max_tokens,
+                payload.request.request.temperature,
             ),
         )
 
         # Update models in validator table if changed
+        models = json.dumps(payload.models)
         cursor.execute(
             """
             INSERT INTO validator (hotkey, models)
@@ -194,10 +198,10 @@ async def ingest(request: Request):
             """,
             (
                 payload.request.hotkey,
-                json.dumps(payload.models),
-                json.dumps(payload.models),
-                json.dumps(payload.models),
-                json.dumps(payload.models),
+                models,
+                models,
+                models,
+                models,
             ),
         )
 
