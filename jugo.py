@@ -44,13 +44,15 @@ class MinerResponse(BaseModel):
     uid: int
     stats: Stats
 
+
 class LLMRequest(BaseModel):
-    messages: Optional[ Dict[str, Any] ] = None
+    messages: Optional[List[Dict[str, Any]]] = None
     prompt: Optional[str] = None
     model: str
     seed: Optional[int]
     max_tokens: Optional[int]
     temperature: Optional[float]
+
 
 # Define the ValidatorRequest model
 class ValidatorRequest(BaseModel):
@@ -172,7 +174,9 @@ async def ingest(request: Request):
             (
                 payload.request.r_nanoid,
                 payload.request.block,
-                json.dumps(payload.request.request.messages or payload.request.request.prompt),
+                json.dumps(
+                    payload.request.request.messages or payload.request.request.prompt
+                ),
                 payload.request.request_endpoint,
                 payload.request.version,
                 payload.request.hotkey,
