@@ -345,8 +345,10 @@ def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> N
             }
 
             requests.post(
-                endonURL,
+                str(endonURL),
                 json=error_payload
             )
+
+            print(f"Error report sent to Endon: {str(error)}")
         except Exception as e:
             print(f"Failed to report error to Endon: {str(e)}")
