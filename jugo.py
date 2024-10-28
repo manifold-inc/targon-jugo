@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 import time
 from dotenv import load_dotenv
 import os
+import requests
 
 from pymysql.cursors import DictCursor
 from epistula import verify_signature
@@ -104,6 +105,7 @@ targon_stats_db = pymysql.connect(
     ssl={"ssl_ca": "/etc/ssl/certs/ca-certificates.crt"},
 )
 
+endonURL = os.getenv("ENDON_URL")
 
 # Ingestion endpoint
 @app.post("/")
@@ -217,6 +219,9 @@ async def ingest(request: Request):
     except Exception as e:
         targon_stats_db.rollback()
         error_traceback = traceback.format_exc()
+
+        # Send error to Endon
+        sendErrorToEndon(e, error_traceback, "ingest")
         print(f"Error occurred: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
@@ -296,6 +301,9 @@ async def exgest(request: Request):
             }
 
         except json.JSONDecodeError as e:
+            error_traceback = traceback.format_exc()
+            # Send error to Endon
+            sendErrorToEndon(e, error_traceback, "exgest")
             print(f"Error decoding JSON: {str(e)}")
             raise HTTPException(
                 status_code=500,
@@ -303,6 +311,8 @@ async def exgest(request: Request):
             )
         except Exception as e:
             error_traceback = traceback.format_exc()
+            # Send error to Endon
+            sendErrorToEndon(e, error_traceback, "exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
@@ -324,3 +334,19 @@ async def exgest(request: Request):
 @app.get("/ping")
 def ping():
     return "pong", 200
+
+def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> None:
+        try:
+            error_payload = {
+                "error": str(error),
+                "traceback": error_traceback,
+                "endpoint": endpoint,
+                "timestamp": time.time()
+            }
+
+            requests.post(
+                endonURL,
+                json=error_payload
+            )
+        except Exception as e:
+            print(f"Failed to report error to Endon: {str(e)}")
