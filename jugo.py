@@ -266,7 +266,7 @@ async def exgest(request: Request):
             # Fetch the latest 50 records after the last processed ID
             cursor.execute(
                 """
-                SELECT id, request, response, uid, hotkey, endpoint
+                SELECT id, request, response, uid, hotkey, endpoint, success
                 FROM request
                 WHERE id > %s AND scored = false
                 ORDER BY id DESC
