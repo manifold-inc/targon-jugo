@@ -17,6 +17,6 @@ def testEndon():
 
         print("Test error sent to Endon. Please check the Endon logs.")
 
-# Actually call the function
+#  call the function
 if __name__ == "__main__":
     testEndon()
