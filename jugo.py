@@ -254,7 +254,6 @@ async def exgest(request: Request):
             print(err)
             raise HTTPException(status_code=400, detail=str(err))
 
-    exgest_request = ExgestRequest(**json_data)
 
 
     # If cache is empty or expired, fetch new records for all models
@@ -263,6 +262,7 @@ async def exgest(request: Request):
         cursor = targon_hub_db.cursor(DictCursor)
         
         try:
+            exgest_request = ExgestRequest(**json_data)
             for model in exgest_request.models:
                 # Generate bucket ID for this model
                 alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
