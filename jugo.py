@@ -221,7 +221,7 @@ async def ingest(request: Request):
         error_traceback = traceback.format_exc()
 
         # Send error to Endon
-        sendErrorToEndon(e, error_traceback, "ingest")
+        sendErrorToEndon(e, error_traceback, "jugo-ingest")
         print(f"Error occurred: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
@@ -303,7 +303,7 @@ async def exgest(request: Request):
         except json.JSONDecodeError as e:
             error_traceback = traceback.format_exc()
             # Send error to Endon
-            sendErrorToEndon(e, error_traceback, "exgest")
+            sendErrorToEndon(e, error_traceback, "jugo-exgest")
             print(f"Error decoding JSON: {str(e)}")
             raise HTTPException(
                 status_code=500,
@@ -312,7 +312,7 @@ async def exgest(request: Request):
         except Exception as e:
             error_traceback = traceback.format_exc()
             # Send error to Endon
-            sendErrorToEndon(e, error_traceback, "exgest")
+            sendErrorToEndon(e, error_traceback, "jugo-exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
