@@ -227,7 +227,7 @@ async def ingest(request: Request):
 
 
 # Exegestor endpoint
-@app.post("/exgest")
+@app.post("/organics")
 async def exgest(request: Request):
     now = round(time.time() * 1000)
     body = await request.body()
@@ -276,7 +276,7 @@ async def exgest(request: Request):
                     AND scored = false 
                     AND JSON_EXTRACT(request, '$.model') = %s
                     ORDER BY id DESC
-                    LIMIT 50
+                    LIMIT 20
                     """,
                     (current_bucket.model_last_ids.get(model, 0), model)
                     #so either get the latest ide or get 50 down from the most current
