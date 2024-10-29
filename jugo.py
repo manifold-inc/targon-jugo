@@ -69,16 +69,16 @@ class IngestPayload(BaseModel):
     request: ValidatorRequest
     models: List[str]
 
+class CurrentBucket(BaseModel):
+    id: Optional[str] = None
+    model_last_ids: Dict[str, int] = {} 
+
+class ExgestRequest(BaseModel):
+    models: List[str]
 
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
     cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
     return cursor.fetchone() is not None
-
-
-class CurrentBucket(BaseModel):
-    id: Optional[str] = None
-    last_id: Optional[str] = None
-
 
 # Global variables for bucket management
 current_bucket = CurrentBucket()
@@ -227,10 +227,11 @@ async def ingest(request: Request):
 
 
 # Exegestor endpoint
-@app.get("/")
+@app.post("/exgest")
 async def exgest(request: Request):
     now = round(time.time() * 1000)
     body = await request.body()
+    json_data = await request.json()
 
     # Extract signature information from headers
     timestamp = request.headers.get("Epistula-Timestamp")
@@ -253,73 +254,70 @@ async def exgest(request: Request):
             print(err)
             raise HTTPException(status_code=400, detail=str(err))
 
-    # Get the cached bucket (or fetch new records if cache is expired)
+    exgest_request = ExgestRequest(**json_data)
 
-    # If cache is empty or expired, fetch new records and update the cache
-    if "current_bucket" not in cache:
-        # Update the bucket id
-        alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        current_bucket.id = "b_" + generate(alphabet=alphabet, size=14)
 
+    # If cache is empty or expired, fetch new records for all models
+    if "buckets" not in cache:
+        model_buckets = {}
         cursor = targon_hub_db.cursor(DictCursor)
+        
         try:
-            # Fetch the latest 50 records after the last processed ID
-            cursor.execute(
-                """
-                SELECT id, request, response, uid, hotkey, endpoint, success
-                FROM request
-                WHERE id > %s AND scored = false
-                ORDER BY id DESC
-                LIMIT 50
-            """,
-                (current_bucket.last_id or 0,),
-            )
+            for model in exgest_request.models:
+                # Generate bucket ID for this model
+                alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                bucket_id = "b_" + generate(alphabet=alphabet, size=14)
 
-            records = cursor.fetchall()
+                cursor.execute(
+                    """
+                    SELECT id, request, response, uid, hotkey, endpoint, success
+                    FROM request
+                    WHERE id > %s 
+                    AND scored = false 
+                    AND JSON_EXTRACT(request, '$.model') = %s
+                    ORDER BY id DESC
+                    LIMIT 50
+                    """,
+                    (current_bucket.model_last_ids.get(model, 0), model)
+                    #so either get the latest ide or get 50 down from the most current
+                )
 
-            # Convert records to ResponseRecord objects
-            response_records = []
-            for record in records:
-                # Parse the JSON string into a Python list
-                record["response"] = json.loads(record["response"])
-                record["request"] = json.loads(record["request"])
-                response_records.append(record)
+                records = cursor.fetchall()
 
-            # Update the last processed ID if there are new records
-            if response_records and len(response_records):
-                current_bucket.last_id = response_records[-1]["id"]
+                # Convert records to ResponseRecord objects
+                response_records = []
+                for record in records:
+                    record["response"] = json.loads(record["response"])
+                    record["request"] = json.loads(record["request"])
+                    response_records.append(record)
 
-            # Update cache with new bucket id and records (even if empty)
-            cache["current_bucket"] = {
-                "bucket_id": current_bucket.id,
-                "records": response_records,
-            }
+                # Update the last processed ID for this specific model
+                if response_records and len(response_records):
+                    current_bucket.model_last_ids[model] = response_records[-1]["id"]
 
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal Server Error: Invalid JSON in response. {str(e)}",
-            )
+                model_buckets[model] = {
+                    "bucket_id": bucket_id,
+                    "records": response_records
+                }
+
+            # Cache all model buckets together
+            cache["buckets"] = model_buckets
+            
         except Exception as e:
             error_traceback = traceback.format_exc()
+            # Send error to Endon
+            sendErrorToEndon(e, error_traceback, "jugo-exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
+                detail=f"Internal Server Error: Could not fetch responses. {str(e)}"
             )
         finally:
             cursor.close()
 
-    # Return cached data (which may be an empty list of records)
-    cached_bucket = cache["current_bucket"]
-
-    # Return the cached records and bucket id (records may be an empty list)
-    return {
-        "bucket_id": cached_bucket["bucket_id"],
-        "records": cached_bucket["records"],
-    }
-
+    # Filter cached buckets to only return requested models
+    cached_buckets = cache["buckets"]
+    return {model: cached_buckets[model] for model in exgest_request.models if model in cached_buckets}
 
 @app.get("/ping")
 def ping():
