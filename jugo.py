@@ -305,8 +305,6 @@ async def exgest(request: Request):
             
         except Exception as e:
             error_traceback = traceback.format_exc()
-            # Send error to Endon
-            sendErrorToEndon(e, error_traceback, "jugo-exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
