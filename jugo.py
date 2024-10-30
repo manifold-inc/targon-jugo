@@ -75,10 +75,6 @@ class CurrentBucket(BaseModel):
     model_last_ids: Dict[str, int] = {}
 
 
-class ExgestRequest(BaseModel):
-    models: List[str]
-
-
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
     cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
     return cursor.fetchone() is not None
@@ -262,9 +258,8 @@ async def exgest(request: Request):
         cursor = targon_hub_db.cursor(DictCursor)
         alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         bucket_id = "b_" + generate(alphabet=alphabet, size=14)
-        exgest_request = ExgestRequest(**json_data)
         try:
-            for model in exgest_request.models:
+            for model in json_data:
                 # Generate bucket ID for this model
 
                 cursor.execute(
@@ -313,7 +308,7 @@ async def exgest(request: Request):
             "bucket_id": bucket_id,
             "organics": {
                 model: cached_buckets[model]
-                for model in exgest_request.models
+                for model in json_data
                 if model in cached_buckets
             },
         }
