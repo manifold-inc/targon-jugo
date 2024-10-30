@@ -293,6 +293,7 @@ async def exgest(request: Request):
 
             # Cache all model buckets together
             cache["buckets"] = model_buckets
+            cache["bucket_id"] = bucket_id
         except Exception as e:
             error_traceback = traceback.format_exc()
             print(f"Error occurred: {str(e)}\n{error_traceback}")
@@ -303,16 +304,16 @@ async def exgest(request: Request):
         finally:
             cursor.close()
 
-        cached_buckets = cache["buckets"]
-        return {
-            "bucket_id": bucket_id,
-            "organics": {
-                model: cached_buckets[model]
-                for model in json_data
-                if model in cached_buckets
-            },
-        }
-         
+    cached_buckets = cache["buckets"]
+    return {
+        "bucket_id": cache["bucket_id"],
+        "organics": {
+            model: cached_buckets[model]
+            for model in json_data
+            if model in cached_buckets
+        },
+    }
+
     # Filter cached buckets to only return requested models
 
 
