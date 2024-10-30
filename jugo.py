@@ -69,16 +69,20 @@ class IngestPayload(BaseModel):
     request: ValidatorRequest
     models: List[str]
 
+
 class CurrentBucket(BaseModel):
     id: Optional[str] = None
-    model_last_ids: Dict[str, int] = {} 
+    model_last_ids: Dict[str, int] = {}
+
 
 class ExgestRequest(BaseModel):
     models: List[str]
 
+
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
     cursor.execute("SELECT 1 FROM validator WHERE hotkey = %s", (signed_by,))
     return cursor.fetchone() is not None
+
 
 # Global variables for bucket management
 current_bucket = CurrentBucket()
@@ -254,19 +258,16 @@ async def exgest(request: Request):
             print(err)
             raise HTTPException(status_code=400, detail=str(err))
 
-
-
     # If cache is empty or expired, fetch new records for all models
     if "buckets" not in cache:
         model_buckets = {}
         cursor = targon_hub_db.cursor(DictCursor)
-        
+        alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        bucket_id = "b_" + generate(alphabet=alphabet, size=14)
+        exgest_request = ExgestRequest(**json_data)
         try:
-            exgest_request = ExgestRequest(**json_data)
             for model in exgest_request.models:
                 # Generate bucket ID for this model
-                alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-                bucket_id = "b_" + generate(alphabet=alphabet, size=14)
 
                 cursor.execute(
                     """
@@ -279,7 +280,7 @@ async def exgest(request: Request):
                     LIMIT 20
                     """,
                     (current_bucket.model_last_ids.get(model, 0), model)
-                    #so either get the latest ide or get 50 down from the most current
+                    # so either get the latest ide or get 50 down from the most current
                 )
 
                 records = cursor.fetchall()
@@ -295,27 +296,32 @@ async def exgest(request: Request):
                 if response_records and len(response_records):
                     current_bucket.model_last_ids[model] = response_records[-1]["id"]
 
-                model_buckets[model] = {
-                    "bucket_id": bucket_id,
-                    "records": response_records
-                }
+                model_buckets[model] = response_records
 
             # Cache all model buckets together
             cache["buckets"] = model_buckets
-            
         except Exception as e:
             error_traceback = traceback.format_exc()
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Internal Server Error: Could not fetch responses. {str(e)}"
+                detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
             )
         finally:
             cursor.close()
 
+        cached_buckets = cache["buckets"]
+        return {
+            "bucket_id": bucket_id,
+            "organics": {
+                model: cached_buckets[model]
+                for model in exgest_request.models
+                if model in cached_buckets
+            },
+        }
+         
     # Filter cached buckets to only return requested models
-    cached_buckets = cache["buckets"]
-    return {model: cached_buckets[model] for model in exgest_request.models if model in cached_buckets}
+
 
 @app.get("/ping")
 def ping():
