@@ -219,7 +219,7 @@ async def ingest(request: Request):
         error_traceback = traceback.format_exc()
 
         # Send error to Endon
-        sendErrorToEndon(e, error_traceback, "jugo-ingest")
+        sendErrorToEndon(e, error_traceback, "ingest")
         print(f"Error occurred: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
@@ -305,7 +305,7 @@ async def exgest(request: Request):
         except Exception as e:
             error_traceback = traceback.format_exc()
             # Send error to Endon
-            sendErrorToEndon(e, error_traceback, "jugo-exgest")
+            sendErrorToEndon(e, error_traceback, "exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
@@ -323,27 +323,29 @@ async def exgest(request: Request):
         },
     }
 
-    # Filter cached buckets to only return requested models
-
-
 @app.get("/ping")
 def ping():
     return "pong", 200
 
 def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> None:
-        try:
-            error_payload = {
-                "error": str(error),
-                "traceback": error_traceback,
-                "endpoint": endpoint,
-                "timestamp": time.time()
-            }
+    try:
+        error_payload = {
+            "service": "jugo",
+            "endpoint": endpoint,
+            "error": str(error),
+            "traceback": error_traceback,
+        }
 
-            requests.post(
-                (str(endonURL) + "/report"),
-                json=error_payload
-            )
+        response = requests.post(
+                (str(endonURL)),
+                json=error_payload,
+            headers={"Content-Type": "application/json"}
+        )
 
-            print(f"Error report sent to Endon: {str(error)}")
-        except Exception as e:
-            print(f"Failed to report error to Endon: {str(e)}")
+        if response.status_code != 200:
+            print(f"Failed to report error to Endon. Status code: {response.status_code}")
+            print(f"Response: {response.text}")
+        else:
+            print("Error successfully reported to Endon")
+    except Exception as e:
+        print(f"Failed to report error to Endon: {str(e)}")
