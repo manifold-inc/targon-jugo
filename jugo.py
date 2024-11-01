@@ -330,7 +330,7 @@ def ping():
 def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> None:
     try:
         error_payload = {
-            "service": "jugo",
+            "service": "targon-jugo",
             "endpoint": endpoint,
             "error": str(error),
             "traceback": error_traceback,
