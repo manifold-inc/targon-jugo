@@ -335,10 +335,9 @@ def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> N
             "error": str(error),
             "traceback": error_traceback,
         }
-
         response = requests.post(
-                (str(endonURL)),
-                json=error_payload,
+            str(endonURL),
+            json=error_payload,
             headers={"Content-Type": "application/json"}
         )
 
