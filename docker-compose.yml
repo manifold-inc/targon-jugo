@@ -6,6 +6,8 @@ services:
       - traefik.http.routers.jugo.tls=true
       - traefik.http.routers.jugo.tls.certresolver=letsencrypt
       - traefik.http.services.jugo.loadbalancer.server.port=80
+    networks:
+      - traefik
     build:
       context: .
     env_file: .env
@@ -16,10 +18,16 @@ services:
       - 80:80
       - 443:443
     restart: always
+    networks:
+      - traefik
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.toml:/etc/traefik/traefik.toml
       - traefik-public-certificates:/certificates
+
+networks:
+  traefik:
+    external: true
 
 volumes:
   traefik-public-certificates:
