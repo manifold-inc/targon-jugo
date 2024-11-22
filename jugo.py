@@ -275,7 +275,7 @@ async def exgest(request: Request):
                     FROM request
                     WHERE id > %s 
                     AND scored = false 
-                    AND JSON_EXTRACT(request, '$.model') = %s
+                    AND model_name = %s
                     ORDER BY id DESC
                     LIMIT 20
                     """,
