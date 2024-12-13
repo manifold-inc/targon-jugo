@@ -277,7 +277,7 @@ async def exgest(request: Request):
                     AND scored = false 
                     AND model_name = %s
                     ORDER BY id DESC
-                    LIMIT 20
+                    LIMIT 50
                     """,
                     (current_bucket.model_last_ids.get(model, 0), model)
                     # so either get the latest ide or get 50 down from the most current
