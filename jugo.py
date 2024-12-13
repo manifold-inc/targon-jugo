@@ -271,13 +271,13 @@ async def exgest(request: Request):
 
                 cursor.execute(
                     """
-                    SELECT id, request, response, uid, hotkey, endpoint, success, time_to_first_token
+                    SELECT id, request, response, uid, hotkey, endpoint, success
                     FROM request
                     WHERE id > %s 
                     AND scored = false 
                     AND model_name = %s
                     ORDER BY id DESC
-                    LIMIT 50
+                    LIMIT 20
                     """,
                     (current_bucket.model_last_ids.get(model, 0), model)
                     # so either get the latest ide or get 50 down from the most current
@@ -305,8 +305,8 @@ async def exgest(request: Request):
         except Exception as e:
             error_traceback = traceback.format_exc()
             # Send error to Endon
-            sendErrorToEndon(e, error_traceback, "exgest")
             print(f"Error occurred: {str(e)}\n{error_traceback}")
+            sendErrorToEndon(e, error_traceback, "exgest")
             raise HTTPException(
                 status_code=500,
                 detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
