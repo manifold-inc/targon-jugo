@@ -13,6 +13,7 @@ from epistula import verify_signature
 import pymysql
 import json
 import traceback
+from threading import Lock
 
 
 pymysql.install_as_MySQLdb()
@@ -106,6 +107,9 @@ targon_stats_db = pymysql.connect(
 )
 
 endonURL = os.getenv("ENDON_URL")
+
+# Create a single lock instance - this is shared across all requests
+cache_lock = Lock()  # Initialize the mutex lock
 
 
 # Ingestion endpoint
@@ -258,75 +262,80 @@ async def exgest(request: Request):
             print(err)
             raise HTTPException(status_code=400, detail=str(err))
 
-    # If cache is empty or expired, fetch new records for all models
-    cached_buckets = cache.get("buckets")
-    bucket_id = cache.get("bucket_id")
-    if cached_buckets is None or bucket_id is None:
-        model_buckets = {}
-        cursor = targon_hub_db.cursor(DictCursor)
-        alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        bucket_id = "b_" + generate(alphabet=alphabet, size=14)
-        try:
-            for model in json_data:
-                # Generate bucket ID for this model
+    with cache_lock:  # Acquire the lock - other threads must wait here
+        cached_buckets = cache.get("buckets")  # Safely check cache
+        bucket_id = cache.get("bucket_id")
 
-                cursor.execute(
-                    """
-                    SELECT id, request, response, uid, hotkey, endpoint, success
-                    FROM request
-                    WHERE id > %s 
-                    AND scored = false 
-                    AND model_name = %s
-                    ORDER BY id DESC
-                    LIMIT 50
-                    """,
-                    (current_bucket.model_last_ids.get(model, 0), model),
-                )
+        if cached_buckets is None or bucket_id is None:
+            # Only one thread can execute this block at a time
+            model_buckets = {}
+            cursor = targon_hub_db.cursor(DictCursor)
+            alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            bucket_id = "b_" + generate(alphabet=alphabet, size=14)
+            try:
+                for model in json_data:
+                    # Generate bucket ID for this model
 
-                records = cursor.fetchall()
-
-                # If we have records, mark them as scored
-                if records:
-                    record_ids = [record["id"] for record in records]
-                    placeholders = ", ".join(["%s"] * len(record_ids))
                     cursor.execute(
-                        f"""
-                        UPDATE request 
-                        SET scored = true 
-                        WHERE id IN ({placeholders})
+                        """
+                        SELECT id, request, response, uid, hotkey, endpoint, success
+                        FROM request
+                        WHERE id > %s 
+                        AND scored = false 
+                        AND model_name = %s
+                        ORDER BY id DESC
+                        LIMIT 50
                         """,
-                        record_ids,
+                        (current_bucket.model_last_ids.get(model, 0), model),
                     )
 
-                # Convert records to ResponseRecord objects
-                response_records = []
-                for record in records:
-                    record["response"] = json.loads(record["response"])
-                    record["request"] = json.loads(record["request"])
-                    response_records.append(record)
+                    records = cursor.fetchall()
 
-                # Update the last processed ID for this specific model
-                if response_records and len(response_records):
-                    current_bucket.model_last_ids[model] = response_records[-1]["id"]
+                    # If we have records, mark them as scored
+                    if records:
+                        record_ids = [record["id"] for record in records]
+                        placeholders = ", ".join(["%s"] * len(record_ids))
+                        cursor.execute(
+                            f"""
+                            UPDATE request 
+                            SET scored = true 
+                            WHERE id IN ({placeholders})
+                            """,
+                            record_ids,
+                        )
 
-                model_buckets[model] = response_records
+                    # Convert records to ResponseRecord objects
+                    response_records = []
+                    for record in records:
+                        record["response"] = json.loads(record["response"])
+                        record["request"] = json.loads(record["request"])
+                        response_records.append(record)
 
-            # Cache all model buckets together
-            cache["buckets"] = model_buckets
-            cache["bucket_id"] = bucket_id
-            cached_buckets = model_buckets
-        except Exception as e:
-            error_traceback = traceback.format_exc()
-            # Send error to Endon
-            print(f"Error occurred: {str(e)}\n{error_traceback}")
-            sendErrorToEndon(e, error_traceback, "exgest")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
-            )
-        finally:
-            cursor.close()
+                    # Update the last processed ID for this specific model
+                    if response_records and len(response_records):
+                        current_bucket.model_last_ids[model] = response_records[-1][
+                            "id"
+                        ]
 
+                    model_buckets[model] = response_records
+
+                # Safely update cache - no other thread can interfere
+                cache["buckets"] = model_buckets
+                cache["bucket_id"] = bucket_id
+                cached_buckets = model_buckets
+            except Exception as e:
+                error_traceback = traceback.format_exc()
+                # Send error to Endon
+                print(f"Error occurred: {str(e)}\n{error_traceback}")
+                sendErrorToEndon(e, error_traceback, "exgest")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
+                )
+            finally:
+                cursor.close()
+
+    # each thread uses its own cached_buckets
     return {
         "bucket_id": bucket_id,
         "organics": {
