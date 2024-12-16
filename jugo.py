@@ -107,6 +107,7 @@ targon_stats_db = pymysql.connect(
 
 endonURL = os.getenv("ENDON_URL")
 
+
 # Ingestion endpoint
 @app.post("/")
 async def ingest(request: Request):
@@ -279,10 +280,23 @@ async def exgest(request: Request):
                     ORDER BY id DESC
                     LIMIT 50
                     """,
-                    (current_bucket.model_last_ids.get(model, 0), model)
+                    (current_bucket.model_last_ids.get(model, 0), model),
                 )
 
                 records = cursor.fetchall()
+
+                # If we have records, mark them as scored
+                if records:
+                    record_ids = [record["id"] for record in records]
+                    placeholders = ", ".join(["%s"] * len(record_ids))
+                    cursor.execute(
+                        f"""
+                        UPDATE request 
+                        SET scored = true 
+                        WHERE id IN ({placeholders})
+                        """,
+                        record_ids,
+                    )
 
                 # Convert records to ResponseRecord objects
                 response_records = []
@@ -322,9 +336,11 @@ async def exgest(request: Request):
         },
     }
 
+
 @app.get("/ping")
 def ping():
     return "pong", 200
+
 
 def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> None:
     try:
@@ -337,11 +353,13 @@ def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> N
         response = requests.post(
             str(endonURL),
             json=error_payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         if response.status_code != 200:
-            print(f"Failed to report error to Endon. Status code: {response.status_code}")
+            print(
+                f"Failed to report error to Endon. Status code: {response.status_code}"
+            )
             print(f"Response: {response.text}")
         else:
             print("Error successfully reported to Endon")
