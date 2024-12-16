@@ -320,6 +320,7 @@ async def exgest(request: Request):
                     for record in records:
                         record["response"] = json.loads(record["response"])
                         record["request"] = json.loads(record["request"])
+
                         response_records.append(record)
 
                     # Update the last processed ID for this specific model
