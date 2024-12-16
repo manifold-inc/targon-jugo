@@ -13,7 +13,7 @@ from epistula import verify_signature
 import pymysql
 import json
 import traceback
-from threading import Lock
+from asyncio import Lock
 
 
 pymysql.install_as_MySQLdb()
