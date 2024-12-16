@@ -86,7 +86,7 @@ def is_authorized_hotkey(cursor, signed_by: str) -> bool:
 current_bucket = CurrentBucket()
 
 # Cache: Store the data for 20 minutes (1200 seconds)
-cache = TTLCache(maxsize=1, ttl=1200)
+cache = TTLCache(maxsize=2, ttl=1200)
 
 targon_hub_db = pymysql.connect(
     host=os.getenv("HUB_DATABASE_HOST"),
@@ -237,6 +237,9 @@ async def ingest(request: Request):
 # Exegestor endpoint
 @app.post("/organics")
 async def exgest(request: Request):
+    request_id = generate(size=6)  # Unique ID for tracking request flow
+    print(f"[{request_id}] New request at {time.time()}")
+
     now = round(time.time() * 1000)
     body = await request.body()
     json_data = await request.json()
@@ -262,11 +265,19 @@ async def exgest(request: Request):
             print(err)
             raise HTTPException(status_code=400, detail=str(err))
 
-    with cache_lock:  # Acquire the lock - other threads must wait here
-        cached_buckets = cache.get("buckets")  # Safely check cache
+    print(f"\nRequest received at {time.time()}")
+
+    async with cache_lock:  # Acquire the lock - other threads must wait here
+        print(f"[{request_id}] Lock acquired at {time.time()}")
+
+        cached_buckets = cache.get("buckets")
         bucket_id = cache.get("bucket_id")
+        print(
+            f"[{request_id}] Cache state: buckets={cached_buckets is not None}, bucket_id={bucket_id}"
+        )
 
         if cached_buckets is None or bucket_id is None:
+            print(f"[{request_id}] Cache miss - creating new bucket")
             # Only one thread can execute this block at a time
             model_buckets = {}
             cursor = targon_hub_db.cursor(DictCursor)
@@ -320,13 +331,14 @@ async def exgest(request: Request):
                     model_buckets[model] = response_records
 
                 # Safely update cache - no other thread can interfere
+                print(f"[{request_id}] Updating cache with bucket {bucket_id}")
                 cache["buckets"] = model_buckets
                 cache["bucket_id"] = bucket_id
                 cached_buckets = model_buckets
             except Exception as e:
                 error_traceback = traceback.format_exc()
                 # Send error to Endon
-                print(f"Error occurred: {str(e)}\n{error_traceback}")
+                print(f"[{request_id}] Error: {str(e)}\n{error_traceback}")
                 sendErrorToEndon(e, error_traceback, "exgest")
                 raise HTTPException(
                     status_code=500,
@@ -335,7 +347,7 @@ async def exgest(request: Request):
             finally:
                 cursor.close()
 
-    # each thread uses its own cached_buckets
+    print(f"[{request_id}] Request completed at {time.time()}")
     return {
         "bucket_id": bucket_id,
         "organics": {
@@ -351,7 +363,9 @@ def ping():
     return "pong", 200
 
 
-def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> None:
+def sendErrorToEndon(
+    request_id: str, error: Exception, error_traceback: str, endpoint: str
+) -> None:
     try:
         error_payload = {
             "service": "targon-jugo",
@@ -367,10 +381,10 @@ def sendErrorToEndon(error: Exception, error_traceback: str, endpoint: str) -> N
 
         if response.status_code != 200:
             print(
-                f"Failed to report error to Endon. Status code: {response.status_code}"
+                f"[{request_id}] Failed to report error to Endon. Status code: {response.status_code}"
             )
-            print(f"Response: {response.text}")
+            print(f"[{request_id}] Response: {response.text}")
         else:
-            print("Error successfully reported to Endon")
+            print(f"[{request_id}] Error successfully reported to Endon")
     except Exception as e:
-        print(f"Failed to report error to Endon: {str(e)}")
+        print(f"[{request_id}] Failed to report error to Endon: {str(e)}")
