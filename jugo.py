@@ -116,6 +116,7 @@ cache_lock = Lock()  # Initialize the mutex lock
 @app.post("/")
 async def ingest(request: Request):
     now = round(time.time() * 1000)
+    request_id = generate(size=6)  # Unique ID for tracking request flow
     body = await request.body()
     json_data = await request.json()
 
@@ -224,11 +225,11 @@ async def ingest(request: Request):
         error_traceback = traceback.format_exc()
 
         # Send error to Endon
-        sendErrorToEndon(e, error_traceback, "ingest")
-        print(f"Error occurred: {str(e)}\n{error_traceback}")
+        sendErrorToEndon(request_id, e, error_traceback, "ingest")
+        print(f"[{request_id}] Error occurred: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
-            detail=f"Internal Server Error: Could not insert responses/requests. {str(e)}",
+            detail=f"[{request_id}] Internal Server Error: Could not insert responses/requests. {str(e)}",
         )
     finally:
         cursor.close()
@@ -340,7 +341,7 @@ async def exgest(request: Request):
                 error_traceback = traceback.format_exc()
                 # Send error to Endon
                 print(f"[{request_id}] Error: {str(e)}\n{error_traceback}")
-                sendErrorToEndon(e, error_traceback, "exgest")
+                sendErrorToEndon(request_id, e, error_traceback, "exgest")
                 raise HTTPException(
                     status_code=500,
                     detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
