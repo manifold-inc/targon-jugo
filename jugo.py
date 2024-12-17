@@ -6,7 +6,6 @@ from typing import List, Optional, Dict, Any
 import time
 from dotenv import load_dotenv
 import os
-import requests
 
 from pymysql.cursors import DictCursor
 from epistula import verify_signature
@@ -106,11 +105,8 @@ targon_stats_db = pymysql.connect(
     ssl={"ssl_ca": "/etc/ssl/certs/ca-certificates.crt"},
 )
 
-endonURL = os.getenv("ENDON_URL")
-
 # Create a single lock instance - this is shared across all requests
 cache_lock = Lock()  # Initialize the mutex lock
-
 
 # Ingestion endpoint
 @app.post("/")
@@ -137,7 +133,12 @@ async def ingest(request: Request):
     )
 
     if err:
-        print(err)
+        log_error(
+            request_id,
+            Exception(err),
+            "Signature verification failed",
+            "ingest",
+        )
         raise HTTPException(status_code=400, detail=str(err))
 
     cursor = targon_stats_db.cursor()
@@ -145,6 +146,12 @@ async def ingest(request: Request):
         payload = IngestPayload(**json_data)
         # Check if the sender is an authorized hotkey
         if not signed_by or not is_authorized_hotkey(cursor, signed_by):
+            log_error(
+                request_id,
+                Exception("Unauthorized hotkey"),
+                f"Unauthorized hotkey: {signed_by}",
+                "ingest",
+            )
             raise HTTPException(
                 status_code=401, detail=f"Unauthorized hotkey: {signed_by}"
             )
@@ -223,10 +230,7 @@ async def ingest(request: Request):
     except Exception as e:
         targon_stats_db.rollback()
         error_traceback = traceback.format_exc()
-
-        # Send error to Endon
-        sendErrorToEndon(request_id, e, error_traceback, "ingest")
-        print(f"[{request_id}] Error occurred: {str(e)}\n{error_traceback}")
+        log_error(request_id, e, error_traceback, "ingest")
         raise HTTPException(
             status_code=500,
             detail=f"[{request_id}] Internal Server Error: Could not insert responses/requests. {str(e)}",
@@ -238,126 +242,123 @@ async def ingest(request: Request):
 # Exegestor endpoint
 @app.post("/organics")
 async def exgest(request: Request):
-    request_id = generate(size=6)  # Unique ID for tracking request flow
-    print(f"[{request_id}] New request at {time.time()}")
+    request_id = generate(size=6)
+    try:
+        json_data = await request.json()
+        now = round(time.time() * 1000)
+        body = await request.body()
 
-    now = round(time.time() * 1000)
-    body = await request.body()
-    json_data = await request.json()
+        # Extract signature information from headers
+        timestamp = request.headers.get("Epistula-Timestamp")
+        uuid = request.headers.get("Epistula-Uuid")
+        signed_by = request.headers.get("Epistula-Signed-By")
+        signature = request.headers.get("Epistula-Request-Signature")
 
-    # Extract signature information from headers
-    timestamp = request.headers.get("Epistula-Timestamp")
-    uuid = request.headers.get("Epistula-Uuid")
-    signed_by = request.headers.get("Epistula-Signed-By")
-    signature = request.headers.get("Epistula-Request-Signature")
+        # Verify the signature using the new epistula protocol
+        if not DEBUG:
+            err = verify_signature(
+                signature=signature,
+                body=body,
+                timestamp=timestamp,
+                uuid=uuid,
+                signed_by=signed_by,
+                now=now,
+            )
 
-    # Verify the signature using the new epistula protocol
-    if not DEBUG:
-        err = verify_signature(
-            signature=signature,
-            body=body,
-            timestamp=timestamp,
-            uuid=uuid,
-            signed_by=signed_by,
-            now=now,
-        )
+            if err:
+                log_error(
+                    request_id,
+                    Exception(err),
+                    "Signature verification failed",
+                    "exgest",
+                )
+                raise HTTPException(status_code=400, detail=str(err))
 
-        if err:
-            print(err)
-            raise HTTPException(status_code=400, detail=str(err))
+        async with cache_lock:  # Acquire the lock - other threads must wait here
+            cached_buckets = cache.get("buckets")
+            bucket_id = cache.get("bucket_id")
 
-    print(f"\nRequest received at {time.time()}")
+            if cached_buckets is None or bucket_id is None:
+                model_buckets = {}
+                cursor = targon_hub_db.cursor(DictCursor)
+                alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                bucket_id = "b_" + generate(alphabet=alphabet, size=14)
+                try:
+                    for model in json_data:
+                        # Generate bucket ID for this model
 
-    async with cache_lock:  # Acquire the lock - other threads must wait here
-        print(f"[{request_id}] Lock acquired at {time.time()}")
-
-        cached_buckets = cache.get("buckets")
-        bucket_id = cache.get("bucket_id")
-        print(
-            f"[{request_id}] Cache state: buckets={cached_buckets is not None}, bucket_id={bucket_id}"
-        )
-
-        if cached_buckets is None or bucket_id is None:
-            print(f"[{request_id}] Cache miss - creating new bucket")
-            # Only one thread can execute this block at a time
-            model_buckets = {}
-            cursor = targon_hub_db.cursor(DictCursor)
-            alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-            bucket_id = "b_" + generate(alphabet=alphabet, size=14)
-            try:
-                for model in json_data:
-                    # Generate bucket ID for this model
-
-                    cursor.execute(
-                        """
-                        SELECT id, request, response, uid, hotkey, endpoint, success, total_time
-                        FROM request
-                        WHERE id > %s 
-                        AND scored = false 
-                        AND model_name = %s
-                        ORDER BY id DESC
-                        LIMIT 50
-                        """,
-                        (current_bucket.model_last_ids.get(model, 0), model),
-                    )
-
-                    records = cursor.fetchall()
-
-                    # If we have records, mark them as scored
-                    if records:
-                        record_ids = [record["id"] for record in records]
-                        placeholders = ", ".join(["%s"] * len(record_ids))
                         cursor.execute(
-                            f"""
-                            UPDATE request 
-                            SET scored = true 
-                            WHERE id IN ({placeholders})
+                            """
+                            SELECT id, request, response, uid, hotkey, endpoint, success, total_time
+                            FROM request
+                            WHERE id > %s 
+                            AND scored = false 
+                            AND model_name = %s
+                            ORDER BY id DESC
+                            LIMIT 50
                             """,
-                            record_ids,
+                            (current_bucket.model_last_ids.get(model, 0), model),
                         )
 
-                    # Convert records to ResponseRecord objects
-                    response_records = []
-                    for record in records:
-                        record["response"] = json.loads(record["response"])
-                        record["request"] = json.loads(record["request"])
+                        records = cursor.fetchall()
 
-                        response_records.append(record)
+                        # If we have records, mark them as scored
+                        if records:
+                            record_ids = [record["id"] for record in records]
+                            placeholders = ", ".join(["%s"] * len(record_ids))
+                            cursor.execute(
+                                f"""
+                                UPDATE request 
+                                SET scored = true 
+                                WHERE id IN ({placeholders})
+                                """,
+                                record_ids,
+                            )
 
-                    # Update the last processed ID for this specific model
-                    if response_records and len(response_records):
-                        current_bucket.model_last_ids[model] = response_records[-1][
-                            "id"
-                        ]
+                        # Convert records to ResponseRecord objects
+                        response_records = []
+                        for record in records:
+                            record["response"] = json.loads(record["response"])
+                            record["request"] = json.loads(record["request"])
 
-                    model_buckets[model] = response_records
+                            response_records.append(record)
 
-                # Safely update cache - no other thread can interfere
-                print(f"[{request_id}] Updating cache with bucket {bucket_id}")
-                cache["buckets"] = model_buckets
-                cache["bucket_id"] = bucket_id
-                cached_buckets = model_buckets
-            except Exception as e:
-                error_traceback = traceback.format_exc()
-                # Send error to Endon
-                print(f"[{request_id}] Error: {str(e)}\n{error_traceback}")
-                sendErrorToEndon(request_id, e, error_traceback, "exgest")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
-                )
-            finally:
-                cursor.close()
+                        # Update the last processed ID for this specific model
+                        if response_records and len(response_records):
+                            current_bucket.model_last_ids[model] = response_records[-1][
+                                "id"
+                            ]
 
-    print(f"[{request_id}] Request completed at {time.time()}")
-    return {
-        "bucket_id": bucket_id,
-        "organics": {
-            model: cached_buckets[model]
-            for model in json_data
-            if model in cached_buckets
-        },
-    }
+                        model_buckets[model] = response_records
+
+                    # Safely update cache - no other thread can interfere
+                    cache["buckets"] = model_buckets
+                    cache["bucket_id"] = bucket_id
+                    cached_buckets = model_buckets
+                except Exception as e:
+                    error_traceback = traceback.format_exc()
+                    log_error(request_id, e, error_traceback, "exgest")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
+                    )
+                finally:
+                    cursor.close()
+
+        return {
+            "bucket_id": bucket_id,
+            "organics": {
+                model: cached_buckets[model]
+                for model in json_data
+                if model in cached_buckets
+            },
+        }
+    except json.JSONDecodeError as e:
+        log_error(request_id, e, traceback.format_exc(), "exgest")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid JSON in request body: {str(e)}"
+        )
 
 
 @app.get("/ping")
@@ -365,28 +366,16 @@ def ping():
     return "pong", 200
 
 
-def sendErrorToEndon(
+def log_error(
     request_id: str, error: Exception, error_traceback: str, endpoint: str
 ) -> None:
-    try:
-        error_payload = {
-            "service": "targon-jugo",
-            "endpoint": endpoint,
-            "error": str(error),
-            "traceback": error_traceback,
-        }
-        response = requests.post(
-            str(endonURL),
-            json=error_payload,
-            headers={"Content-Type": "application/json"},
-        )
-
-        if response.status_code != 200:
-            print(
-                f"[{request_id}] Failed to report error to Endon. Status code: {response.status_code}"
-            )
-            print(f"[{request_id}] Response: {response.text}")
-        else:
-            print(f"[{request_id}] Error successfully reported to Endon")
-    except Exception as e:
-        print(f"[{request_id}] Failed to report error to Endon: {str(e)}")
+    error_payload = {
+        "level": "error",
+        "service": "targon-jugo",
+        "endpoint": endpoint,
+        "request_id": request_id,
+        "error": str(error),
+        "traceback": str(error_traceback),
+        "type": "error_log"
+    }
+    print(json.dumps(error_payload, ensure_ascii=False))
