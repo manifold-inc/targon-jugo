@@ -13,16 +13,28 @@ import pymysql
 import json
 import traceback
 from asyncio import Lock
+from pythonjsonlogger.json import JsonFormatter
+import logging
 
 
 pymysql.install_as_MySQLdb()
 load_dotenv()
 
 DEBUG = not not os.getenv("DEBUG")
+
 config = {}
 if not DEBUG:
     config = {"docs_url": None, "redoc_url": None}
 app = FastAPI(**config)  # type: ignore
+
+# Configure JSON logging
+logger = logging.getLogger("jugo")
+logger.setLevel(logging.INFO)
+
+handler = logging.StreamHandler()
+formatter = JsonFormatter()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 class Stats(BaseModel):
@@ -134,11 +146,15 @@ async def ingest(request: Request):
     )
 
     if err:
-        log_error(
-            request_id,
-            Exception(err),
-            "Signature verification failed",
-            "ingest",
+        logger.error(
+            {
+                "service": "targon-jugo",
+                "endpoint": "ingest",
+                "request_id": request_id,
+                "error": str(err),
+                "traceback": "Signature verification failed",
+                "type": "error_log",
+            }
         )
         raise HTTPException(status_code=400, detail=str(err))
 
@@ -147,11 +163,15 @@ async def ingest(request: Request):
         payload = IngestPayload(**json_data)
         # Check if the sender is an authorized hotkey
         if not signed_by or not is_authorized_hotkey(cursor, signed_by):
-            log_error(
-                request_id,
-                Exception("Unauthorized hotkey"),
-                f"Unauthorized hotkey: {signed_by}",
-                "ingest",
+            logger.error(
+                {
+                    "service": "targon-jugo",
+                    "endpoint": "ingest",
+                    "request_id": request_id,
+                    "error": str("Unauthorized hotkey"),
+                    "traceback": f"Unauthorized hotkey: {signed_by}",
+                    "type": "error_log",
+                }
             )
             raise HTTPException(
                 status_code=401, detail=f"Unauthorized hotkey: {signed_by}"
@@ -231,7 +251,16 @@ async def ingest(request: Request):
     except Exception as e:
         targon_stats_db.rollback()
         error_traceback = traceback.format_exc()
-        log_error(request_id, e, error_traceback, "ingest")
+        logger.error(
+            {
+                "service": "targon-jugo",
+                "endpoint": "ingest",
+                "request_id": request_id,
+                "error": str(e),
+                "traceback": error_traceback,
+                "type": "error_log",
+            }
+        )
         raise HTTPException(
             status_code=500,
             detail=f"[{request_id}] Internal Server Error: Could not insert responses/requests. {str(e)}",
@@ -267,11 +296,15 @@ async def exgest(request: Request):
             )
 
             if err:
-                log_error(
-                    request_id,
-                    Exception(err),
-                    "Signature verification failed",
-                    "exgest",
+                logger.error(
+                    {
+                        "service": "targon-jugo",
+                        "endpoint": "exgest",
+                        "request_id": request_id,
+                        "error": str(err),
+                        "traceback": "Signature verification failed",
+                        "type": "error_log",
+                    }
                 )
                 raise HTTPException(status_code=400, detail=str(err))
 
@@ -340,7 +373,16 @@ async def exgest(request: Request):
                     cached_buckets = model_buckets
                 except Exception as e:
                     error_traceback = traceback.format_exc()
-                    log_error(request_id, e, error_traceback, "exgest")
+                    logger.error(
+                        {
+                            "service": "targon-jugo",
+                            "endpoint": "exgest",
+                            "request_id": request_id,
+                            "error": str(e),
+                            "traceback": error_traceback,
+                            "type": "error_log",
+                        }
+                    )
                     raise HTTPException(
                         status_code=500,
                         detail=f"Internal Server Error: Could not fetch responses. {str(e)}",
@@ -357,7 +399,16 @@ async def exgest(request: Request):
             },
         }
     except json.JSONDecodeError as e:
-        log_error(request_id, e, traceback.format_exc(), "exgest")
+        logger.error(
+            {
+                "service": "targon-jugo",
+                "endpoint": "exgest",
+                "request_id": request_id,
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "type": "error_log",
+            }
+        )
         raise HTTPException(
             status_code=400, detail=f"Invalid JSON in request body: {str(e)}"
         )
@@ -366,18 +417,3 @@ async def exgest(request: Request):
 @app.get("/ping")
 def ping():
     return "pong", 200
-
-
-def log_error(
-    request_id: str, error: Exception, error_traceback: str, endpoint: str
-) -> None:
-    error_payload = {
-        "level": "error",
-        "service": "targon-jugo",
-        "endpoint": endpoint,
-        "request_id": request_id,
-        "error": str(error),
-        "traceback": str(error_traceback),
-        "type": "error_log",
-    }
-    print(json.dumps(error_payload, ensure_ascii=False))

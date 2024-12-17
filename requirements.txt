@@ -6,3 +6,4 @@ PyMySQL==1.1.1
 uvicorn==0.32.0
 cachetools==5.5.0
 nanoid==2.0.0
+python-json-logger==3.2.1
