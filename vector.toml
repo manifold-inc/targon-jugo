@@ -2,34 +2,31 @@
 type = "docker_logs"
 include_labels = [ "vector.enable" ]
 
+[transforms.filter_non_json]
+type = "filter"
+inputs = [ "docker_logs" ]
+condition = { type = "vrl", source = "is_json(to_string!(.message))" }
+
+
 [transforms.docker_logs_to_json]
 type = "remap"
-inputs = [ "docker_logs" ]
+inputs = [ "filter_non_json" ]
 source = """
-if is_json(to_string!(.message)) {
-    . = parse_json!(.message)
-}
+. = parse_json!(.message)
+del(.message)
 """
 
 [transforms.filter_info]
 type = "filter"
 inputs = [ "docker_logs_to_json" ]
-condition = { type = "vrl", source = '''
-exists(.level) && .level == "error"
-''' }
-
-# Debug sink to see all logs
-[sinks.debug]
-type = "console"
-inputs = [ "docker_logs_to_json" ]
-encoding.codec = "json"
+condition = { type = "vrl", source = ".level != \"info\"" }
 
 [sinks.console]
 type = "console"
 inputs = [ "filter_info" ]
 target = "stdout"
-encoding.codec = "json"
-encoding.json.pretty = true
+encoding.codec="json"
+encoding.json.pretty=true
 
 [sinks.influx_db]
 type = "influxdb_logs"
