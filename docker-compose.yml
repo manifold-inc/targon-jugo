@@ -6,6 +6,7 @@ services:
       - traefik.http.routers.jugo.tls=true
       - traefik.http.routers.jugo.tls.certresolver=letsencrypt
       - traefik.http.services.jugo.loadbalancer.server.port=80
+      - vector.enable=true
     build:
       context: .
     env_file: .env
@@ -20,6 +21,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.toml:/etc/traefik/traefik.toml
       - traefik-public-certificates:/certificates
+  
+  vector:
+    image: timberio/vector:0.43.0-debian
+    environment:
+      - INFLUX_ENDPOINT=${INFLUX_ENDPOINT}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+    volumes:
+      - ./vector.toml:/etc/vector/vector.toml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: --config /etc/vector/vector.toml
+    restart: unless-stopped
 
 volumes:
   traefik-public-certificates:

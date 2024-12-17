@@ -1,0 +1,38 @@
+[sources.docker_logs]
+type = "docker_logs"
+include_labels = [ "vector.enable" ]
+
+[transforms.filter_non_json]
+type = "filter"
+inputs = [ "docker_logs" ]
+condition = { type = "vrl", source = "is_json(to_string!(.message))" }
+
+
+[transforms.docker_logs_to_json]
+type = "remap"
+inputs = [ "filter_non_json" ]
+source = """
+. = parse_json!(.message)
+del(.message)
+"""
+
+[transforms.filter_info]
+type = "filter"
+inputs = [ "docker_logs_to_json" ]
+condition = { type = "vrl", source = ".level != \"info\"" }
+
+[sinks.console]
+type = "console"
+inputs = [ "filter_info" ]
+target = "stdout"
+encoding.codec="json"
+encoding.json.pretty=true
+
+[sinks.influx_db]
+type = "influxdb_logs"
+inputs = [ "filter_info" ]
+bucket = "app_error_reports"
+measurement = "targon-jugo"
+endpoint = "${INFLUX_ENDPOINT}"
+org = "manifold"
+token = "${INFLUX_TOKEN}"
