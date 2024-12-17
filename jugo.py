@@ -108,6 +108,7 @@ targon_stats_db = pymysql.connect(
 # Create a single lock instance - this is shared across all requests
 cache_lock = Lock()  # Initialize the mutex lock
 
+
 # Ingestion endpoint
 @app.post("/")
 async def ingest(request: Request):
@@ -281,7 +282,9 @@ async def exgest(request: Request):
             if cached_buckets is None or bucket_id is None:
                 model_buckets = {}
                 cursor = targon_hub_db.cursor(DictCursor)
-                alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                alphabet = (
+                    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                )
                 bucket_id = "b_" + generate(alphabet=alphabet, size=14)
                 try:
                     for model in json_data:
@@ -356,8 +359,7 @@ async def exgest(request: Request):
     except json.JSONDecodeError as e:
         log_error(request_id, e, traceback.format_exc(), "exgest")
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid JSON in request body: {str(e)}"
+            status_code=400, detail=f"Invalid JSON in request body: {str(e)}"
         )
 
 
@@ -376,6 +378,6 @@ def log_error(
         "request_id": request_id,
         "error": str(error),
         "traceback": str(error_traceback),
-        "type": "error_log"
+        "type": "error_log",
     }
     print(json.dumps(error_payload, ensure_ascii=False))
