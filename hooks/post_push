@@ -1,0 +1,5 @@
+#!/bin/bash
+
+TAG_NAME=$(echo $SOURCE_COMMIT | awk '{print substr($0,0,7)}')
+docker tag $IMAGE_NAME $DOCKER_REPO:$TAG_NAME
+docker push $DOCKER_REPO:$TAG_NAME
