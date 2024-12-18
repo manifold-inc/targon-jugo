@@ -325,7 +325,7 @@ async def exgest(request: Request):
 
                         cursor.execute(
                             """
-                            SELECT id, request, response, uid, hotkey, endpoint, success, total_time, response_tokens
+                            SELECT id, request, response, uid, hotkey, endpoint, success, total_time, time_to_first_token, response_tokens
                             FROM request
                             WHERE id > %s 
                             AND scored = false 
