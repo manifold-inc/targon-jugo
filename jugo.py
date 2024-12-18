@@ -148,6 +148,7 @@ cache_lock = Lock()  # Initialize the mutex lock
 
 @app.post("/organics/scores")
 async def ingest_organics(request: Request):
+    logger.info("Start POST /organics/scores")
     now = round(time.time() * 1000)
     request_id = generate(size=6)  # Unique ID for tracking request flow
     body = await request.body()
@@ -271,6 +272,7 @@ async def ingest_organics(request: Request):
 
 @app.post("/")
 async def ingest(request: Request):
+    logger.info("Start POST /")
     now = round(time.time() * 1000)
     request_id = generate(size=6)  # Unique ID for tracking request flow
     body = await request.body()
@@ -421,6 +423,7 @@ async def ingest(request: Request):
 # Exegestor endpoint
 @app.post("/organics")
 async def exgest(request: Request):
+    logger.info("Start POST /organics")
     request_id = generate(size=6)
     try:
         json_data = await request.json()
@@ -472,6 +475,7 @@ async def exgest(request: Request):
                     for model in json_data:
                         # Generate bucket ID for this model
 
+                        logger.info(f"Selecting records for {model}")
                         cursor.execute(
                             """
                             SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens
@@ -491,6 +495,7 @@ async def exgest(request: Request):
                         if records:
                             record_ids = [record["id"] for record in records]
                             placeholders = ", ".join(["%s"] * len(record_ids))
+                            logger.info("Updating all records")
                             cursor.execute(
                                 f"""
                                 UPDATE request 
