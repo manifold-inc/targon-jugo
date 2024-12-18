@@ -475,7 +475,7 @@ async def exgest(request: Request):
 
                     cursor.execute(
                         """
-                        SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens, model
+                        SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens, model_name
                         FROM request
                         WHERE scored = false 
                         ORDER BY id DESC
@@ -507,8 +507,8 @@ async def exgest(request: Request):
                         record["request"] = json.loads(record["request"])
 
                         response_records.append(record)
-                        model = record.get("model")
-                        if models.get(record.get("model")) == None:
+                        model = record.get("model_name")
+                        if models.get(record.get("model_name")) == None:
                             models[model] = []
                         models[model].append(record)
 
