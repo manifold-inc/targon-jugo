@@ -1,3 +1,9 @@
+GREEN  := "\\u001b[32m"
+RESET  := "\\u001b[0m\\n"
+CHECK  := "\\xE2\\x9C\\x94"
+
+set shell := ["bash", "-uc"]
+
 default:
   just -l
 
