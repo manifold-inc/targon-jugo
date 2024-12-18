@@ -1,3 +1,6 @@
+default:
+  just -l
+
 build opts="":
   docker compose build {{opts}}
 
@@ -8,6 +11,3 @@ prod image version='latest':
 
 rollback image:
   export VERSION=$(docker image ls --filter before=manifoldlabs/targon-{{image}}:latest --filter reference=manifoldlabs/targon-hub-{{image}} --format "{{{{.Tag}}" | head -n 1) && docker rollout {{image}}
-
-# Alias for the run command
-up: run
