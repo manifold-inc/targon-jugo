@@ -110,7 +110,6 @@ class OrganicsPayload(BaseModel):
 
 class CurrentBucket(BaseModel):
     id: Optional[str] = None
-    model_last_ids: Dict[str, int] = {}
 
 
 def is_authorized_hotkey(cursor, signed_by: str) -> bool:
@@ -480,13 +479,12 @@ async def exgest(request: Request):
                             """
                             SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens
                             FROM request
-                            WHERE id > %s 
-                            AND scored = false 
+                            WHERE scored = false 
                             AND model_name = %s
                             ORDER BY id DESC
                             LIMIT 50
                             """,
-                            (current_bucket.model_last_ids.get(model, 0), model),
+                            (model),
                         )
 
                         records = cursor.fetchall()
@@ -512,12 +510,6 @@ async def exgest(request: Request):
                             record["request"] = json.loads(record["request"])
 
                             response_records.append(record)
-
-                        # Update the last processed ID for this specific model
-                        if response_records and len(response_records):
-                            current_bucket.model_last_ids[model] = response_records[-1][
-                                "id"
-                            ]
 
                         model_buckets[model] = response_records
 
