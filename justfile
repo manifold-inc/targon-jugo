@@ -1,8 +1,13 @@
-build:
-  docker build -t manifoldlabs/sn4-exegestor .
+build opts="":
+  docker compose build {{opts}}
 
-run: build
-  docker run -p 8000:8000 --env-file .env -d --name sn4_exegestor manifoldlabs/sn4-exegestor
+prod image version='latest':
+  export VERSION={{version}} && docker compose pull
+  export VERSION={{version}} && docker rollout {{image}}
+  @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
+
+rollback image:
+  export VERSION=$(docker image ls --filter before=manifoldlabs/targon-{{image}}:latest --filter reference=manifoldlabs/targon-hub-{{image}} --format "{{{{.Tag}}" | head -n 1) && docker rollout {{image}}
 
 # Alias for the run command
 up: run

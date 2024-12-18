@@ -1,5 +1,6 @@
 services:
   jugo:
+    image: manifoldlabs/targon-jugo
     labels:
       - traefik.enable=true
       - traefik.http.routers.jugo.rule=Host(`jugo.sybil.com`)
