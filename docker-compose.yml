@@ -16,10 +16,10 @@ services:
     image: manifoldlabs/targon-jugo:4.4.0
     labels:
       - traefik.enable=true
-      - traefik.http.routers.jugo.rule=Host(`jugo.targon.com`)
-      - traefik.http.routers.jugo.tls=true
-      - traefik.http.routers.jugo.tls.certresolver=letsencrypt
-      - traefik.http.services.jugo.loadbalancer.server.port=80
+      - traefik.http.routers.jugo-new.rule=Host(`jugo.targon.com`)
+      - traefik.http.routers.jugo-new.tls=true
+      - traefik.http.routers.jugo-new.tls.certresolver=letsencrypt
+      - traefik.http.services.jugo-new.loadbalancer.server.port=80
       - vector.enable=true
     build:
       context: .
