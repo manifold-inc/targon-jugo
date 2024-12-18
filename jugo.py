@@ -203,7 +203,7 @@ async def ingest_organics(request: Request):
         cursor.executemany(
             """
             INSERT INTO organic_requests (
-                endpoint, 
+                request_endpoint, 
                 temperature, 
                 max_tokens, 
                 seed, 
