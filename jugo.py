@@ -471,47 +471,49 @@ async def exgest(request: Request):
                 )
                 bucket_id = "b_" + generate(alphabet=alphabet, size=14)
                 try:
-                    for model in json_data:
-                        # Generate bucket ID for this model
+                    # Generate bucket ID for this model
 
-                        logger.info(f"Selecting records for {model}")
+                    cursor.execute(
+                        """
+                        SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens, model
+                        FROM request
+                        WHERE scored = false 
+                        ORDER BY id DESC
+                        LIMIT 100
+                        """,
+                    )
+
+                    records = cursor.fetchall()
+
+                    # If we have records, mark them as scored
+                    if records:
+                        record_ids = [record["id"] for record in records]
+                        placeholders = ", ".join(["%s"] * len(record_ids))
+                        logger.info("Updating all records")
                         cursor.execute(
-                            """
-                            SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens
-                            FROM request
-                            WHERE scored = false 
-                            AND model_name = %s
-                            ORDER BY id DESC
-                            LIMIT 50
+                            f"""
+                            UPDATE request 
+                            SET scored = true 
+                            WHERE id IN ({placeholders})
                             """,
-                            (model),
+                            record_ids,
                         )
 
-                        records = cursor.fetchall()
+                    # Convert records to ResponseRecord objects
+                    models = {}
+                    response_records = []
+                    for record in records:
+                        record["response"] = json.loads(record["response"])
+                        record["request"] = json.loads(record["request"])
 
-                        # If we have records, mark them as scored
-                        if records:
-                            record_ids = [record["id"] for record in records]
-                            placeholders = ", ".join(["%s"] * len(record_ids))
-                            logger.info("Updating all records")
-                            cursor.execute(
-                                f"""
-                                UPDATE request 
-                                SET scored = true 
-                                WHERE id IN ({placeholders})
-                                """,
-                                record_ids,
-                            )
+                        response_records.append(record)
+                        model = record.get("model")
+                        if models.get(record.get("model")) == None:
+                            models[model] = []
+                        models[model].append(record)
 
-                        # Convert records to ResponseRecord objects
-                        response_records = []
-                        for record in records:
-                            record["response"] = json.loads(record["response"])
-                            record["request"] = json.loads(record["request"])
-
-                            response_records.append(record)
-
-                        model_buckets[model] = response_records
+                    for model in models.keys():
+                        model_buckets[model] = models[model]
 
                     # Safely update cache - no other thread can interfere
                     cache["buckets"] = model_buckets
