@@ -81,6 +81,31 @@ class IngestPayload(BaseModel):
     responses: List[MinerResponse]
     request: ValidatorRequest
     models: List[str]
+    scores: Dict[int, Any]
+
+
+class OrganicStats(BaseModel):
+    time_to_first_token: float
+    time_for_all_tokens: float
+    total_time: float
+    tps: float
+    tokens: List[Any]
+    verified: bool
+    error: Optional[str] = None
+    cause: Optional[str] = None
+    model: str
+    max_tokens: int
+    seed: int
+    temperature: float
+    uid: int
+    hotkey: str
+    coldkey: str
+    endpoint: str
+    total_tokens: int
+
+
+class OrganicsPayload(BaseModel):
+    organics: List[OrganicStats]
 
 
 class CurrentBucket(BaseModel):
@@ -121,7 +146,129 @@ targon_stats_db = pymysql.connect(
 cache_lock = Lock()  # Initialize the mutex lock
 
 
-# Ingestion endpoint
+@app.post("/organics/scores")
+async def ingest_organics(request: Request):
+    now = round(time.time() * 1000)
+    request_id = generate(size=6)  # Unique ID for tracking request flow
+    body = await request.body()
+    json_data = await request.json()
+
+    # Extract signature information from headers
+    timestamp = request.headers.get("Epistula-Timestamp")
+    uuid = request.headers.get("Epistula-Uuid")
+    signed_by = request.headers.get("Epistula-Signed-By")
+    signature = request.headers.get("Epistula-Request-Signature")
+
+    # Verify the signature using the new epistula protocol
+    err = verify_signature(
+        signature=signature,
+        body=body,
+        timestamp=timestamp,
+        uuid=uuid,
+        signed_by=signed_by,
+        now=now,
+    )
+
+    if err:
+        logger.error(
+            {
+                "service": "targon-jugo",
+                "endpoint": "ingest_organics",
+                "request_id": request_id,
+                "error": str(err),
+                "traceback": "Signature verification failed",
+                "type": "error_log",
+            }
+        )
+        raise HTTPException(status_code=400, detail=str(err))
+
+    cursor = targon_stats_db.cursor()
+    try:
+        payload = OrganicsPayload(**json_data)
+        # Check if the sender is an authorized hotkey
+        if not signed_by or not is_authorized_hotkey(cursor, signed_by):
+            logger.error(
+                {
+                    "service": "targon-jugo",
+                    "endpoint": "ingest_organics",
+                    "request_id": request_id,
+                    "error": str("Unauthorized hotkey"),
+                    "traceback": f"Unauthorized hotkey: {signed_by}",
+                    "type": "error_log",
+                }
+            )
+            raise HTTPException(
+                status_code=401, detail=f"Unauthorized hotkey: {signed_by}"
+            )
+        cursor.executemany(
+            """
+            INSERT INTO organic_requests (
+                endpoint, 
+                temperature, 
+                max_tokens, 
+                seed, 
+                model, 
+                total_tokens, 
+                hotkey, 
+                coldkey, 
+                uid, 
+                verified, 
+                time_to_first_token, 
+                time_for_all_tokens,
+                total_time,
+                tps,
+                error,
+                cause
+                ) 
+            VALUES ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                (
+                    md.endpoint,
+                    md.temperature,
+                    md.max_tokens,
+                    md.seed,
+                    md.model,
+                    md.total_tokens,
+                    md.hotkey,
+                    md.coldkey,
+                    md.uid,
+                    md.verified,
+                    md.time_to_first_token,
+                    md.time_for_all_tokens,
+                    md.total_time,
+                    md.tps,
+                    md.error,
+                    md.cause,
+                )
+                for md in payload.organics
+            ],
+        )
+
+        targon_stats_db.commit()
+        return "", 200
+
+    except Exception as e:
+        targon_stats_db.rollback()
+        error_traceback = traceback.format_exc()
+        logger.error(
+            {
+                "service": "targon-jugo",
+                "endpoint": "ingest",
+                "request_id": request_id,
+                "error": str(e),
+                "traceback": error_traceback,
+                "type": "error_log",
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"[{request_id}] Internal Server Error: Could not insert responses/requests. {str(e)}",
+        )
+    finally:
+        cursor.close()
+
+
 @app.post("/")
 async def ingest(request: Request):
     now = round(time.time() * 1000)
@@ -227,21 +374,23 @@ async def ingest(request: Request):
         models = json.dumps(payload.models)
         cursor.execute(
             """
-            INSERT INTO validator (hotkey, models)
-            VALUES (%s, %s)
+            INSERT INTO validator (hotkey, models, scores)
+            VALUES (%s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 models = IF(
                     JSON_CONTAINS(models, %s) AND JSON_CONTAINS(%s, models),
                     models,
                     CAST(%s AS JSON)
-                )
+                ), scores=CAST(%s AS JSON)
             """,
             (
                 payload.request.hotkey,
                 models,
+                payload.scores,
                 models,
                 models,
                 models,
+                payload.scores,
             ),
         )
 
@@ -325,7 +474,7 @@ async def exgest(request: Request):
 
                         cursor.execute(
                             """
-                            SELECT id, request, response, uid, hotkey, endpoint, success, total_time, time_to_first_token, response_tokens
+                            SELECT id, request, response, uid, hotkey, coldkey, endpoint, success, total_time, time_to_first_token, response_tokens
                             FROM request
                             WHERE id > %s 
                             AND scored = false 
