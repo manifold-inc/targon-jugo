@@ -386,11 +386,11 @@ async def ingest(request: Request):
             (
                 payload.request.hotkey,
                 models,
-                payload.scores,
+                json.dumps(payload.scores),
                 models,
                 models,
                 models,
-                payload.scores,
+                json.dumps(payload.scores),
             ),
         )
 
