@@ -46,7 +46,6 @@ class Stats(BaseModel):
     verified: bool
     error: Optional[str] = None
     cause: Optional[str] = None
-    organic: Optional[bool] = None
 
 
 # Define the MinerResponse model
@@ -326,8 +325,8 @@ async def ingest(request: Request):
             )
         cursor.executemany(
             """
-            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error, cause, organic) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO miner_response (r_nanoid, hotkey, coldkey, uid, verified, time_to_first_token, time_for_all_tokens, total_time, tokens, tps, error, cause) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             [
                 (
@@ -343,7 +342,6 @@ async def ingest(request: Request):
                     md.stats.tps,
                     md.stats.error,
                     md.stats.cause,
-                    md.stats.organic or 0,
                 )
                 for md in payload.responses
             ],
